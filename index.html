@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1c1b1a">
+  <title>WL Pedidos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/painel.css">
+</head>
+<body class="tela-login">
+  <main class="login-caixa oculto" id="inicio">
+    <div class="comanda login-comanda">
+      <p class="login-marca">WL Pedidos</p>
+      <h1>Teste o sistema</h1>
+      <p class="texto-suave">Abra o cardápio como cliente, faça um pedido e veja ele chegar no painel da loja.</p>
+      <div class="lista-escolha">
+        <a class="btn btn-escuro btn-bloco" href="cardapio.html?loja=demo">Ver cardápio (cliente)</a>
+        <a class="btn btn-bloco" href="login.html">Entrar no painel (loja ou WL)</a>
+      </div>
+      <p class="texto-suave">Painel da loja: dono@demo.com. Painel da WL Sistemas: wl@demo.com. Senha: 123456.</p>
+    </div>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/demo.js"></script>
+  <script>
+    (function () {
+      var p = new URLSearchParams(location.search);
+      if (p.get("loja")) { location.replace("cardapio.html" + location.search); return; }
+      if (window.WL && WL.demo) { document.getElementById("inicio").classList.remove("oculto"); return; }
+      location.replace("login.html");
+    })();
+  </script>
+</body>
+</html>

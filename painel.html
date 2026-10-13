@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1c1b1a">
+  <title>Painel | WL Pedidos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/painel.css">
+</head>
+<body>
+  <div id="carregando" class="carregando"><div class="girando"></div><span>Abrindo o painel…</span></div>
+
+  <div id="app" class="oculto">
+    <header class="barra">
+      <div class="barra-loja">
+        <img id="barraLogo" class="barra-logo oculto" alt="">
+        <div>
+          <strong id="barraNome"></strong>
+          <a id="barraLink" href="#" target="_blank" rel="noopener">Ver cardápio</a>
+        </div>
+      </div>
+      <div class="barra-acoes">
+        <label class="interruptor" title="Abrir ou fechar a loja para pedidos">
+          <input type="checkbox" id="chkAberta">
+          <span class="interruptor-trilho"></span>
+          <b id="txtAberta">Aberta</b>
+        </label>
+        <button id="btnSom" class="btn btn-p" type="button" aria-pressed="false">Ativar som</button>
+        <a id="linkMaster" class="btn btn-p oculto" href="master.html">Lojas</a>
+        <button id="btnSair" class="btn btn-p btn-texto" type="button">Sair</button>
+      </div>
+    </header>
+
+    <nav class="abas" role="tablist">
+      <button type="button" role="tab" data-aba="pedidos" aria-selected="true">Pedidos <span id="badgeAndamento" class="badge oculto">0</span></button>
+      <button type="button" role="tab" data-aba="cardapio" aria-selected="false">Cardápio</button>
+      <button type="button" role="tab" data-aba="loja" aria-selected="false">Loja</button>
+    </nav>
+
+    <!-- ============ PEDIDOS ============ -->
+    <section id="aba-pedidos" class="aba" role="tabpanel">
+      <div class="resumo-dia">
+        <p>Hoje: <strong id="resPedidos">0 pedidos</strong>, <strong id="resVendas">R$ 0,00</strong> vendidos<span id="resTicket"></span></p>
+        <a id="btnBalcao" class="btn btn-escuro" href="#" target="_blank" rel="noopener">Novo pedido no balcão</a>
+      </div>
+
+      <div class="filtros segmentado" role="radiogroup" aria-label="Filtrar pedidos">
+        <label><input type="radio" name="filtro" value="andamento" checked><span>Em andamento <b id="qtdAndamento"></b></span></label>
+        <label><input type="radio" name="filtro" value="finalizados"><span>Finalizados hoje <b id="qtdFinalizados"></b></span></label>
+        <label><input type="radio" name="filtro" value="cancelados"><span>Cancelados hoje <b id="qtdCancelados"></b></span></label>
+      </div>
+
+      <p id="statusConexao" class="conexao"></p>
+      <div id="listaPedidos" class="lista-pedidos"></div>
+    </section>
+
+    <!-- ============ CARDAPIO ============ -->
+    <section id="aba-cardapio" class="aba oculto" role="tabpanel">
+      <div class="cabeca-aba">
+        <div>
+          <h2>Cardápio</h2>
+          <p class="texto-suave">Toque em "Esgotado" para pausar um item sem apagar.</p>
+        </div>
+        <div class="cabeca-acoes">
+          <button id="btnNovaCategoria" class="btn" type="button">Nova categoria</button>
+          <button id="btnNovoProduto" class="btn btn-escuro" type="button">Novo produto</button>
+        </div>
+      </div>
+      <div id="listaCardapio"></div>
+    </section>
+
+    <!-- ============ LOJA ============ -->
+    <section id="aba-loja" class="aba oculto" role="tabpanel">
+      <div class="loja-grade">
+        <div class="cartao link-cartao">
+          <h2>Link do cardápio</h2>
+          <p class="texto-suave">Coloque na bio do Instagram, no WhatsApp e imprima o QR para as mesas.</p>
+          <div class="link-caixa"><code id="linkCardapio"></code></div>
+          <div class="linha-botoes">
+            <button id="btnCopiarLink" class="btn btn-p" type="button">Copiar link</button>
+            <a id="btnAbrirLink" class="btn btn-p" href="#" target="_blank" rel="noopener">Abrir</a>
+            <a id="btnBaixarQR" class="btn btn-p" href="#" target="_blank" rel="noopener">Baixar QR code</a>
+          </div>
+          <img id="imgQR" class="qr" alt="QR code do cardápio" width="200" height="200">
+        </div>
+
+        <form id="formLoja" class="cartao" novalidate>
+          <h2>Dados da loja</h2>
+          <label class="campo"><span>Nome da loja</span><input id="lNome" maxlength="80" required></label>
+          <div class="campo">
+            <span>Logo</span>
+            <div class="imagem-campo">
+              <img id="lLogoPrevia" class="previa oculto" alt="">
+              <div class="imagem-botoes">
+                <label class="btn btn-p">Enviar imagem<input id="lLogoArquivo" type="file" accept="image/*" class="sr"></label>
+                <button id="lLogoRemover" class="btn btn-p btn-texto" type="button">Remover</button>
+              </div>
+            </div>
+            <input id="lLogo" type="url" placeholder="ou cole o endereço da imagem" maxlength="500">
+          </div>
+          <label class="campo"><span>Cor principal</span>
+            <span class="cor-linha"><input id="lCor" type="color" value="#0f766e"><small>Usada nos botões e no topo do cardápio.</small></span></label>
+          <div class="campos-2">
+            <label class="campo"><span>WhatsApp da loja</span><input id="lWhats" type="tel" maxlength="20" placeholder="(43) 99999-9999"></label>
+            <label class="campo"><span>Chave PIX</span><input id="lPix" maxlength="120"></label>
+          </div>
+          <label class="campo"><span>Endereço</span><input id="lEndereco" maxlength="200"></label>
+          <div class="campos-2">
+            <label class="campo"><span>Taxa de entrega</span><input id="lTaxa" inputmode="decimal" placeholder="0,00"></label>
+            <label class="campo"><span>Pedido mínimo</span><input id="lMinimo" inputmode="decimal" placeholder="0,00"></label>
+          </div>
+          <fieldset class="bloco-check">
+            <legend>Tipos de pedido aceitos</legend>
+            <label><input type="checkbox" id="lDelivery"> Entrega</label>
+            <label><input type="checkbox" id="lRetirada"> Retirada no local</label>
+            <label><input type="checkbox" id="lMesa"> Pedido na mesa</label>
+          </fieldset>
+          <fieldset class="bloco-check" id="lFormas">
+            <legend>Formas de pagamento</legend>
+          </fieldset>
+          <label class="campo"><span>Mensagem quando a loja estiver fechada</span>
+            <input id="lMsgFechada" maxlength="200" placeholder="Ex.: Abrimos de terça a domingo, das 18h às 23h."></label>
+          <p id="erroLoja" class="aviso erro oculto" role="alert"></p>
+          <button id="btnSalvarLoja" class="btn btn-escuro" type="submit">Salvar dados da loja</button>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <!-- Editor de produto -->
+  <dialog id="modalProduto" class="modal" aria-labelledby="mpTitulo">
+    <form id="formProduto" method="dialog" novalidate>
+      <header class="modal-cabeca">
+        <h2 id="mpTitulo">Novo produto</h2>
+        <button type="button" class="btn btn-texto" data-fechar-modal aria-label="Fechar">✕</button>
+      </header>
+      <div class="modal-corpo">
+        <label class="campo"><span>Nome</span><input id="pNome" maxlength="80" required></label>
+        <label class="campo"><span>Descrição</span><textarea id="pDescricao" maxlength="300" placeholder="Ingredientes, tamanho, o que vem junto"></textarea></label>
+        <label class="campo"><span>Categoria</span><select id="pCategoria"></select></label>
+
+        <div class="campo">
+          <span>Foto</span>
+          <div class="imagem-campo">
+            <img id="pImagemPrevia" class="previa oculto" alt="">
+            <div class="imagem-botoes">
+              <label class="btn btn-p">Enviar foto<input id="pImagemArquivo" type="file" accept="image/*" class="sr"></label>
+              <button id="pImagemRemover" class="btn btn-p btn-texto" type="button">Remover</button>
+            </div>
+          </div>
+          <input id="pImagem" type="url" placeholder="ou cole o endereço da imagem" maxlength="500">
+        </div>
+
+        <fieldset class="bloco-editor">
+          <legend>Preço</legend>
+          <div class="segmentado">
+            <label><input type="radio" name="modoPreco" value="unico" checked><span>Preço único</span></label>
+            <label><input type="radio" name="modoPreco" value="tamanhos"><span>Por tamanho</span></label>
+          </div>
+          <label class="campo campo-preco" id="campoPrecoUnico"><span class="sr">Preço</span><input id="pPreco" inputmode="decimal" placeholder="0,00"></label>
+          <div id="editorTamanhos" class="oculto">
+            <div id="listaTamanhos"></div>
+            <button id="btnAddTamanho" class="btn btn-p" type="button">Adicionar tamanho</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="bloco-editor">
+          <legend>Opções e adicionais</legend>
+          <p class="texto-suave">Ex.: "Frutas" (escolha até 3), "Adicionais" (opcional), "Sabor" (obrigatório, escolha 1).</p>
+          <div id="listaGrupos"></div>
+          <button id="btnAddGrupo" class="btn btn-p" type="button">Adicionar grupo de opções</button>
+        </fieldset>
+
+        <label class="check-linha"><input type="checkbox" id="pAtivo" checked> Mostrar no cardápio</label>
+        <p id="erroProduto" class="aviso erro oculto" role="alert"></p>
+      </div>
+      <footer class="modal-rodape">
+        <button type="button" class="btn" data-fechar-modal>Cancelar</button>
+        <button id="btnSalvarProduto" type="button" class="btn btn-escuro">Salvar produto</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Cancelamento -->
+  <dialog id="modalCancelar" class="modal modal-p" aria-labelledby="mcTitulo">
+    <form method="dialog">
+      <header class="modal-cabeca"><h2 id="mcTitulo">Cancelar pedido</h2></header>
+      <div class="modal-corpo">
+        <label class="campo"><span>Motivo (o cliente verá)</span>
+          <input id="mcMotivo" maxlength="200" placeholder="Ex.: produto acabou, endereço fora da área"></label>
+      </div>
+      <footer class="modal-rodape">
+        <button type="button" class="btn" data-fechar-modal>Voltar</button>
+        <button id="btnConfirmarCancelar" type="button" class="btn btn-perigo">Cancelar pedido</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div id="impressao" aria-hidden="true"></div>
+
+  <script src="config.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/demo.js"></script>
+  <script src="js/painel.js"></script>
+</body>
+</html>

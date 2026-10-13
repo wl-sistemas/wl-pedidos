@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <title>Cardápio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/cardapio.css">
+</head>
+<body>
+  <div id="carregando" class="carregando"><div class="girando"></div><span>Abrindo o cardápio…</span></div>
+
+  <div id="erroTela" class="erro-tela oculto">
+    <h1 id="erroTitulo">Cardápio não encontrado</h1>
+    <p id="erroTexto">Confira o link com a loja.</p>
+  </div>
+
+  <div id="app" class="oculto">
+    <div id="faixaBalcao" class="faixa-balcao oculto">
+      Modo balcão: pedido lançado pela loja. <a id="voltarPainel" href="painel.html">Voltar ao painel</a>
+    </div>
+
+    <header class="topo">
+      <div class="topo-faixa"></div>
+      <div class="topo-conteudo">
+        <img id="lojaLogo" class="loja-logo oculto" alt="">
+        <span id="lojaInicial" class="loja-logo loja-inicial" aria-hidden="true"></span>
+        <div>
+          <h1 id="lojaNome"></h1>
+          <p id="lojaStatus" class="loja-status"></p>
+        </div>
+      </div>
+      <ul id="lojaInfos" class="loja-infos"></ul>
+    </header>
+
+    <div id="avisoFechada" class="aviso aviso-fechada oculto"></div>
+
+    <nav id="categoriasNav" class="categorias-nav" aria-label="Categorias"></nav>
+
+    <main id="secoes" class="secoes"></main>
+
+    <footer class="rodape">
+      <a id="rodapeWL" href="#" target="_blank" rel="noopener">Cardápio digital feito com WL Pedidos</a>
+    </footer>
+  </div>
+
+  <!-- Barra do carrinho -->
+  <button id="barraCarrinho" class="barra-carrinho oculto" type="button">
+    <span class="barra-qtd" id="barraQtd">0</span>
+    <span class="barra-texto">Ver meu pedido</span>
+    <strong id="barraTotal">R$ 0,00</strong>
+  </button>
+
+  <!-- Folha do produto -->
+  <div id="folhaProduto" class="folha oculto" role="dialog" aria-modal="true" aria-labelledby="produtoNome">
+    <div class="folha-fundo" data-fechar></div>
+    <div class="folha-caixa">
+      <button class="folha-fechar" type="button" data-fechar aria-label="Fechar">✕</button>
+      <div id="produtoImagem" class="produto-imagem oculto"></div>
+      <div class="folha-corpo">
+        <h2 id="produtoNome"></h2>
+        <p id="produtoDescricao" class="produto-descricao"></p>
+        <div id="produtoOpcoes"></div>
+        <label class="campo">
+          <span>Alguma observação?</span>
+          <textarea id="produtoObs" maxlength="200" placeholder="Ex.: sem cebola, bem gelado"></textarea>
+        </label>
+      </div>
+      <div class="folha-rodape">
+        <div class="contador" aria-label="Quantidade">
+          <button type="button" id="qtdMenos" aria-label="Diminuir">−</button>
+          <output id="qtdValor">1</output>
+          <button type="button" id="qtdMais" aria-label="Aumentar">+</button>
+        </div>
+        <button id="btnAdicionar" class="btn btn-cor btn-adicionar" type="button">Adicionar <span id="produtoTotal"></span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pedido / finalizar -->
+  <div id="folhaPedido" class="folha oculto" role="dialog" aria-modal="true" aria-labelledby="tituloPedido">
+    <div class="folha-fundo" data-fechar></div>
+    <div class="folha-caixa folha-alta">
+      <button class="folha-fechar" type="button" data-fechar aria-label="Fechar">✕</button>
+      <div class="folha-corpo">
+        <h2 id="tituloPedido">Seu pedido</h2>
+
+        <div class="comanda comanda-pedido">
+          <ul id="listaItens" class="lista-itens"></ul>
+          <hr class="tracejado">
+          <div class="linha-valor"><span>Subtotal</span><span id="valSubtotal"></span></div>
+          <div class="linha-valor" id="linhaTaxa"><span>Taxa de entrega</span><span id="valTaxa"></span></div>
+          <div class="linha-valor linha-total"><span>Total</span><span id="valTotal"></span></div>
+          <p id="avisoMinimo" class="aviso oculto"></p>
+        </div>
+
+        <form id="formPedido" novalidate>
+          <fieldset class="bloco">
+            <legend>Como você quer receber?</legend>
+            <div id="tiposAtendimento" class="segmentado"></div>
+          </fieldset>
+
+          <label class="campo"><span>Seu nome</span>
+            <input id="cNome" autocomplete="name" maxlength="80" required></label>
+          <label class="campo" id="campoTelefone"><span>WhatsApp com DDD</span>
+            <input id="cTelefone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(43) 99999-9999"></label>
+          <label class="campo" id="campoEndereco"><span>Endereço de entrega</span>
+            <textarea id="cEndereco" maxlength="200" autocomplete="street-address" placeholder="Rua, número, bairro e ponto de referência"></textarea></label>
+          <label class="campo" id="campoMesa"><span>Mesa ou comanda</span>
+            <input id="cMesa" maxlength="20" inputmode="numeric"></label>
+
+          <fieldset class="bloco" id="blocoPagamento">
+            <legend>Pagamento</legend>
+            <div id="formasPagamento" class="segmentado"></div>
+          </fieldset>
+          <label class="campo oculto" id="campoTroco"><span>Troco para quanto?</span>
+            <input id="cTroco" inputmode="decimal" placeholder="Deixe vazio se não precisar"></label>
+
+          <label class="campo"><span>Observação do pedido</span>
+            <textarea id="cObs" maxlength="300" placeholder="Opcional"></textarea></label>
+
+          <p id="erroPedido" class="aviso erro oculto" role="alert"></p>
+          <button id="btnEnviar" class="btn btn-cor btn-bloco btn-enviar" type="submit">Enviar pedido</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmacao -->
+  <div id="telaConfirmado" class="tela-confirmado oculto" role="dialog" aria-modal="true" aria-labelledby="confTitulo">
+    <div class="comanda comanda-confirmado">
+      <p class="conf-rotulo">Pedido recebido</p>
+      <p class="comanda-numero conf-numero" id="confNumero">#0</p>
+      <h2 id="confTitulo">A loja já recebeu seu pedido.</h2>
+      <p class="conf-total">Total: <strong id="confTotal"></strong></p>
+      <div id="confPix" class="conf-pix oculto">
+        <p>Pague com PIX usando a chave:</p>
+        <div class="pix-chave"><code id="confPixChave"></code><button class="btn btn-p" type="button" id="btnCopiarPix">Copiar</button></div>
+      </div>
+      <div class="conf-acoes">
+        <a id="confAcompanhar" class="btn btn-cor btn-bloco" href="#">Acompanhar pedido</a>
+        <a id="confWhatsapp" class="btn btn-bloco" href="#" target="_blank" rel="noopener">Avisar a loja no WhatsApp</a>
+        <button id="confNovo" class="btn btn-texto btn-bloco" type="button">Fazer outro pedido</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/demo.js"></script>
+  <script src="js/cardapio.js"></script>
+</body>
+</html>

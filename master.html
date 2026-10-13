@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1c1b1a">
+  <title>Lojas | WL Pedidos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/painel.css">
+</head>
+<body class="tela-master">
+  <div id="carregando" class="carregando"><div class="girando"></div><span>Carregando lojas…</span></div>
+
+  <div id="app" class="oculto">
+    <header class="barra barra-master">
+      <div class="barra-loja"><div><strong id="marca">WL Pedidos</strong><span class="texto-suave">Administração das lojas</span></div></div>
+      <div class="barra-acoes"><button id="btnSair" class="btn btn-p btn-texto" type="button">Sair</button></div>
+    </header>
+
+    <main class="master">
+      <div class="master-topo">
+        <p id="resumo" class="resumo-master"></p>
+      </div>
+
+      <form id="formNova" class="cartao nova-loja" novalidate>
+        <h2>Nova loja</h2>
+        <div class="campos-2">
+          <label class="campo"><span>Nome da loja</span><input id="nNome" maxlength="80" placeholder="Ex.: Pizzaria do João"></label>
+          <label class="campo"><span>Link do cardápio</span><input id="nSlug" maxlength="40" placeholder="pizzaria-do-joao">
+            <small id="nPrevia">Só letras minúsculas, números e hífen.</small></label>
+        </div>
+        <p id="erroNova" class="aviso erro oculto" role="alert"></p>
+        <button id="btnCriar" class="btn btn-escuro" type="submit">Criar loja</button>
+      </form>
+
+      <div id="listaLojas" class="lista-lojas"></div>
+
+      <details class="cartao ajuda">
+        <summary>Como dar acesso ao dono da loja</summary>
+        <ol>
+          <li>No Supabase, abra <b>Authentication &gt; Users &gt; Add user</b>, informe o e-mail e uma senha e marque <b>Auto Confirm User</b>.</li>
+          <li>Aqui, na loja certa, digite o mesmo e-mail em "Dar acesso" e confirme.</li>
+          <li>Envie para o cliente o link do painel (login.html), o e-mail e a senha.</li>
+        </ol>
+      </details>
+    </main>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/demo.js"></script>
+  <script src="js/master.js"></script>
+</body>
+</html>

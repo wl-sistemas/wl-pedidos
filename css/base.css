@@ -1,0 +1,142 @@
+/* =====================================================================
+   WL PEDIDOS - BASE COMPARTILHADA
+   A cor de cada loja entra em --cor (definida pelo JavaScript).
+   ===================================================================== */
+:root {
+  --cor: #0f766e;
+  --cor-texto: #ffffff;
+  --cor-suave: color-mix(in srgb, var(--cor) 12%, white);
+
+  --fundo: #f4f4f1;
+  --papel: #ffffff;
+  --comanda: #fffdf5;
+  --tinta: #1c1b1a;
+  --suave: #67645e;
+  --linha: #e3e1db;
+  --ok: #1e8a4c;
+  --alerta: #a85407;
+  --perigo: #b42318;
+
+  --fonte-titulo: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --fonte: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --raio: 14px;
+  --raio-p: 8px;
+  --sombra: 0 1px 2px rgba(28, 27, 26, .06), 0 8px 24px rgba(28, 27, 26, .06);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--tinta);
+  font: 16px/1.5 var(--fonte);
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; display: block; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: inherit; }
+h1, h2, h3 { font-family: var(--fonte-titulo); line-height: 1.15; margin: 0; letter-spacing: -.01em; }
+
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--cor) 55%, white); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* ---------- Botoes ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 10px 18px;
+  border: 1px solid var(--linha); border-radius: 999px;
+  background: var(--papel); color: var(--tinta);
+  font-weight: 600; text-decoration: none; cursor: pointer;
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.btn:hover { border-color: #cfccc4; }
+.btn:active { transform: scale(.98); }
+.btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.btn-cor { background: var(--cor); border-color: var(--cor); color: var(--cor-texto); }
+.btn-cor:hover { border-color: var(--cor); filter: brightness(1.05); }
+.btn-escuro { background: var(--tinta); border-color: var(--tinta); color: #fff; }
+.btn-ok { background: var(--ok); border-color: var(--ok); color: #fff; }
+.btn-perigo { color: var(--perigo); border-color: color-mix(in srgb, var(--perigo) 35%, white); }
+.btn-texto { border-color: transparent; background: transparent; padding-inline: 10px; }
+.btn-p { min-height: 36px; padding: 6px 14px; font-size: 14px; }
+.btn-bloco { width: 100%; }
+
+/* ---------- Campos ---------- */
+.campo { display: grid; gap: 6px; margin-bottom: 14px; align-content: start; }
+.campo > span { font-size: 14px; font-weight: 600; }
+.campo small { color: var(--suave); font-size: 13px; }
+input[type="text"], input[type="tel"], input[type="email"], input[type="password"],
+input[type="number"], input[type="url"], input:not([type]), select, textarea {
+  width: 100%; min-height: 46px; padding: 10px 14px;
+  border: 1px solid var(--linha); border-radius: var(--raio-p);
+  background: var(--papel);
+}
+textarea { min-height: 80px; resize: vertical; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--cor); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cor) 20%, transparent); }
+
+.segmentado { display: flex; gap: 6px; flex-wrap: wrap; }
+.segmentado label { flex: 1 1 0; min-width: 96px; }
+.segmentado input { position: absolute; opacity: 0; pointer-events: none; }
+.segmentado span {
+  display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 10px;
+  border: 1px solid var(--linha); border-radius: var(--raio-p); background: var(--papel);
+  font-weight: 600; font-size: 15px; cursor: pointer; text-align: center;
+}
+.segmentado input:checked + span { border-color: var(--cor); background: var(--cor-suave); box-shadow: inset 0 0 0 1px var(--cor); }
+.segmentado input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--cor) 55%, white); }
+
+/* ---------- Avisos ---------- */
+#wl-toast {
+  position: fixed; left: 50%; bottom: 24px; z-index: 1000;
+  transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+  max-width: calc(100% - 32px); padding: 12px 18px; border-radius: 12px;
+  background: var(--tinta); color: #fff; font-weight: 600; text-align: center;
+  transition: opacity .2s, transform .2s;
+}
+#wl-toast.mostrar { opacity: 1; transform: translate(-50%, 0); }
+#wl-toast.erro { background: var(--perigo); }
+
+.aviso { padding: 12px 14px; border-radius: var(--raio-p); background: #fff4e5; color: #6b3a05; font-size: 15px; }
+.aviso.erro { background: #fdecea; color: #7a1a12; }
+.vazio { padding: 36px 16px; text-align: center; color: var(--suave); }
+.oculto { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Comanda (marca visual do sistema) ---------- */
+.comanda {
+  position: relative;
+  background: var(--comanda);
+  border-radius: 4px;
+  padding: 22px 18px 20px;
+  box-shadow: var(--sombra);
+}
+.comanda::before, .comanda::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 10px;
+  background: radial-gradient(circle at 8px 0, var(--fundo-comanda, var(--fundo)) 5px, transparent 5.5px) 0 0 / 16px 10px repeat-x;
+}
+.comanda::before { top: 0; }
+.comanda::after { bottom: 0; transform: rotate(180deg); }
+.comanda-numero { font-family: var(--fonte-titulo); font-weight: 800; letter-spacing: -.03em; }
+.tracejado { border: 0; border-top: 2px dashed var(--linha); margin: 14px 0; }
+
+/* ---------- Carregando ---------- */
+.carregando { display: grid; place-items: center; min-height: 60vh; color: var(--suave); gap: 12px; }
+.girando { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--linha); border-top-color: var(--cor); animation: girar .8s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+
+/* ---------- Modo demonstracao ---------- */
+.faixa-demo { background: #fff4e5; color: #6b3a05; font-size: 13px; padding: 6px 12px; text-align: center; border-bottom: 1px solid #f3d9b1; }
+.faixa-demo button { margin-left: 6px; border: 0; background: none; padding: 0; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; font-size: 13px; }
+.tela-login .faixa-demo { position: fixed; top: 0; left: 0; right: 0; }
+
+/* ---------- Janela de confirmacao propria ---------- */
+.wl-dialogo { border: 0; border-radius: var(--raio); padding: 0; width: min(420px, calc(100% - 24px)); background: var(--fundo); color: var(--tinta); box-shadow: 0 30px 80px rgba(0,0,0,.3); }
+.wl-dialogo::backdrop { background: rgba(20, 19, 18, .5); }
+.wl-dialogo .modal-corpo { padding: 20px 16px 16px; }
+.wl-dialogo .modal-rodape { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; background: var(--papel); border-top: 1px solid var(--linha); }
+.wl-dialogo-texto { margin: 0 0 12px; font-size: 16px; }

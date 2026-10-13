@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1c1b1a">
+  <title>Entrar | WL Pedidos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/painel.css">
+</head>
+<body class="tela-login">
+  <main class="login-caixa">
+    <div class="comanda login-comanda">
+      <p class="login-marca" id="marca">WL Pedidos</p>
+      <h1>Painel da loja</h1>
+
+      <form id="formLogin" novalidate>
+        <label class="campo"><span>E-mail</span>
+          <input id="email" type="email" autocomplete="username" required></label>
+        <label class="campo"><span>Senha</span>
+          <input id="senha" type="password" autocomplete="current-password" required></label>
+        <p id="erro" class="aviso erro oculto" role="alert"></p>
+        <button id="btnEntrar" class="btn btn-escuro btn-bloco" type="submit">Entrar</button>
+      </form>
+
+      <div id="escolherLoja" class="oculto">
+        <p>Escolha a loja:</p>
+        <div id="listaLojas" class="lista-escolha"></div>
+        <button id="btnSairEscolha" class="btn btn-texto btn-bloco" type="button">Sair</button>
+      </div>
+    </div>
+    <p class="login-ajuda">Esqueceu a senha? <a id="linkSuporte" href="#" target="_blank" rel="noopener">Fale com o suporte</a></p>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/demo.js"></script>
+  <script src="js/login.js"></script>
+</body>
+</html>
