@@ -255,6 +255,8 @@
     }));
     $$("#produtoOpcoes [data-opcao]").forEach(b => b.addEventListener("click", () => alternarOpcao(b)));
 
+    // Um tamanho so: ja vem marcado
+    if (p.tamanhos.length === 1) $("#produtoOpcoes [data-tamanho]").click();
     atualizarTotalProduto();
     abrirFolha("#folhaProduto");
   }
