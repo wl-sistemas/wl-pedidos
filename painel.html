@@ -88,6 +88,18 @@
           <img id="imgQR" class="qr" alt="QR code do cardápio" width="200" height="200">
         </div>
 
+        <div class="cartao">
+          <h2>Impressora deste computador</h2>
+          <p class="texto-suave">Escolha a largura do papel da impressora térmica. Fica salvo só neste computador.</p>
+          <div class="papel-linha">
+            <select id="papelLargura" aria-label="Largura do papel">
+              <option value="58">Papel 58 mm</option>
+              <option value="80">Papel 80 mm</option>
+            </select>
+            <button id="btnTesteImpressao" class="btn btn-p" type="button">Imprimir teste</button>
+          </div>
+        </div>
+
         <form id="formLoja" class="cartao" novalidate>
           <h2>Dados da loja</h2>
           <label class="campo"><span>Nome da loja</span><input id="lNome" maxlength="80" required></label>

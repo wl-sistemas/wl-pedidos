@@ -181,19 +181,34 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--cor); }
 .ajuda summary { cursor: pointer; font-weight: 700; }
 .ajuda ol { margin: 12px 0 0; padding-left: 20px; display: grid; gap: 6px; }
 
-/* ---------- Impressao (cupom 80 mm) ---------- */
+/* ---------- Impressao (impressora termica 58 ou 80 mm) ----------
+   Fonte sem serifa em negrito e preto puro: imprime escuro e legivel.
+   A largura e o tamanho da letra vem do JavaScript (configuracao do papel). */
 #impressao { display: none; }
+.papel-linha { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.papel-linha select { width: auto; min-width: 160px; }
 @media print {
-  @page { size: 80mm auto; margin: 3mm; }
-  body { background: #fff; }
+  body { background: #fff !important; }
   body > *:not(#impressao) { display: none !important; }
   #impressao { display: block; }
-  .cupom { width: 74mm; font: 12px/1.35 "Courier New", monospace; color: #000; }
-  .cupom p { margin: 0 0 2px; }
-  .cupom hr { border: 0; border-top: 1px dashed #000; margin: 5px 0; }
+  .cupom {
+    width: var(--cupom-largura, 54mm);
+    font: 700 var(--cupom-fonte, 13px)/1.3 Arial, Helvetica, sans-serif;
+    color: #000; overflow-wrap: anywhere;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .cupom * { color: #000 !important; }
+  .cupom p { margin: 0 0 3px; }
+  .cupom hr { border: 0; border-top: 2px solid #000; margin: 6px 0; }
   .cupom-centro { text-align: center; }
-  .cupom-numero { font-size: 20px; font-weight: 700; margin: 4px 0; }
-  .cupom-item { display: flex; justify-content: space-between; gap: 6px; }
-  .cupom-det { padding-left: 10px; font-size: 11px; }
-  .cupom-total { font-size: 15px; font-weight: 700; }
+  .cupom-loja { font-size: 1.3em; font-weight: 900; }
+  .cupom-numero { font-size: 1.9em; font-weight: 900; margin: 4px 0; }
+  .cupom-tipo { border: 2px solid #000; padding: 4px 2px; margin: 6px 0; text-align: center; font-size: 1.1em; font-weight: 900; }
+  .cupom-item { display: flex; justify-content: space-between; gap: 6px; font-weight: 900; }
+  .cupom-item span:first-child { min-width: 0; }
+  .cupom-item span:last-child { white-space: nowrap; flex: none; }
+  .cupom-det { padding-left: 6px; font-size: .95em; }
+  .cupom-total { font-size: 1.4em; font-weight: 900; margin-top: 4px; }
+  .cupom-obs { border: 2px solid #000; padding: 4px; margin: 5px 0; }
+  .cupom-fim { height: 8mm; }
 }

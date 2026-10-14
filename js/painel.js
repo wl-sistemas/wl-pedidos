@@ -390,31 +390,70 @@
     return msg;
   }
 
+  // Papel da impressora termica: 58 mm (padrao) ou 80 mm, salvo por computador
+  const PAPEIS = {
+    "58": { pagina: 58, margem: 2, largura: "54mm", fonte: "13px" },
+    "80": { pagina: 80, margem: 3, largura: "74mm", fonte: "15px" }
+  };
+  function papelAtual() {
+    const v = String(U.lerLocal("wl_papel", "58"));
+    return PAPEIS[v] ? v : "58";
+  }
+
+  function imprimirHtml(html) {
+    const papel = PAPEIS[papelAtual()];
+    let estilo = document.getElementById("estiloPagina");
+    if (!estilo) {
+      estilo = document.createElement("style");
+      estilo.id = "estiloPagina";
+      document.head.appendChild(estilo);
+    }
+    estilo.textContent = "@page { size: " + papel.pagina + "mm auto; margin: " + papel.margem + "mm; }";
+    const caixa = $("#impressao");
+    caixa.style.setProperty("--cupom-largura", papel.largura);
+    caixa.style.setProperty("--cupom-fonte", papel.fonte);
+    caixa.innerHTML = '<div class="cupom">' + html + '<div class="cupom-fim"></div></div>';
+    window.print();
+  }
+
   function imprimir(p) {
     const itens = itensPorPedido[p.id] || [];
-    $("#impressao").innerHTML = `
-      <div class="cupom">
-        <p class="cupom-centro"><b>${esc(loja.nome)}</b></p>
-        <p class="cupom-centro cupom-numero">PEDIDO #${p.numero}</p>
-        <p class="cupom-centro">${U.dataHora(p.criado_em)}</p>
-        <p class="cupom-centro"><b>${esc(U.rotuloTipo(p).toUpperCase())}</b></p>
-        <hr>
-        <p>Cliente: ${esc(p.cliente_nome)}</p>
-        ${p.telefone ? `<p>Fone: ${esc(U.telefoneBonito(p.telefone))}</p>` : ""}
-        ${p.endereco ? `<p>Endereço: ${esc(p.endereco)}</p>` : ""}
-        <hr>
-        ${itens.map(i => `
-          <p class="cupom-item"><span>${i.quantidade}x ${esc(i.nome)}${i.tamanho ? " " + esc(i.tamanho) : ""}</span><span>${moeda(i.total)}</span></p>
-          ${U.resumoOpcoes(i.opcoes) ? `<p class="cupom-det">${esc(U.resumoOpcoes(i.opcoes))}</p>` : ""}
-          ${i.observacao ? `<p class="cupom-det">Obs: ${esc(i.observacao)}</p>` : ""}`).join("")}
-        <hr>
-        ${p.observacao ? `<p>Obs: ${esc(p.observacao)}</p><hr>` : ""}
-        <p class="cupom-item"><span>Subtotal</span><span>${moeda(p.subtotal)}</span></p>
-        ${Number(p.taxa_entrega) > 0 ? `<p class="cupom-item"><span>Entrega</span><span>${moeda(p.taxa_entrega)}</span></p>` : ""}
-        <p class="cupom-item cupom-total"><span>TOTAL</span><span>${moeda(p.total)}</span></p>
-        <p>Pagamento: ${esc(p.pagamento || "-")}${p.troco_para ? " (troco p/ " + moeda(p.troco_para) + ")" : ""}</p>
-      </div>`;
-    window.print();
+    const tipo = p.tipo_atendimento === "Delivery" ? "ENTREGA"
+      : p.tipo_atendimento === "Retirada" ? "RETIRADA NA LOJA"
+      : "MESA " + (p.mesa || "");
+    imprimirHtml(`
+      <p class="cupom-centro cupom-loja">${esc(loja.nome.toUpperCase())}</p>
+      <hr>
+      <p class="cupom-centro cupom-numero">PEDIDO #${p.numero}</p>
+      <p class="cupom-centro">${U.dataHora(p.criado_em)}</p>
+      <p class="cupom-tipo">${esc(tipo)}</p>
+      <p>Cliente: ${esc(p.cliente_nome)}</p>
+      ${p.telefone ? `<p>Fone: ${esc(U.telefoneBonito(p.telefone))}</p>` : ""}
+      ${p.endereco ? `<p>Endereço: ${esc(p.endereco)}</p>` : ""}
+      <hr>
+      ${itens.map(i => `
+        <p class="cupom-item"><span>${i.quantidade}x ${esc(i.nome)}${i.tamanho ? " " + esc(i.tamanho) : ""}</span><span>${moeda(i.total)}</span></p>
+        ${U.resumoOpcoes(i.opcoes) ? `<p class="cupom-det">${esc(U.resumoOpcoes(i.opcoes))}</p>` : ""}
+        ${i.observacao ? `<p class="cupom-det">Obs: ${esc(i.observacao)}</p>` : ""}`).join("<hr>")}
+      <hr>
+      ${p.observacao ? `<p class="cupom-obs">OBS: ${esc(p.observacao)}</p>` : ""}
+      <p class="cupom-item"><span>Subtotal</span><span>${moeda(p.subtotal)}</span></p>
+      ${Number(p.taxa_entrega) > 0 ? `<p class="cupom-item"><span>Entrega</span><span>${moeda(p.taxa_entrega)}</span></p>` : ""}
+      <p class="cupom-item cupom-total"><span>TOTAL</span><span>${moeda(p.total)}</span></p>
+      <p>Pagamento: ${esc(p.pagamento || "-")}${p.troco_para ? " (troco para " + moeda(p.troco_para) + ")" : ""}</p>`);
+  }
+
+  function imprimirTeste() {
+    imprimirHtml(`
+      <p class="cupom-centro cupom-loja">${esc(loja.nome.toUpperCase())}</p>
+      <hr>
+      <p class="cupom-centro cupom-numero">TESTE</p>
+      <p class="cupom-tipo">PAPEL ${papelAtual()} MM</p>
+      <p class="cupom-item"><span>1x Produto de exemplo 500 ml</span><span>${moeda(22)}</span></p>
+      <p class="cupom-det">Adicionais: Exemplo 1, Exemplo 2</p>
+      <hr>
+      <p class="cupom-item cupom-total"><span>TOTAL</span><span>${moeda(22)}</span></p>
+      <p>Se o texto ficou pequeno ou cortado, troque o papel acima e teste de novo.</p>`);
   }
 
   // ==================================================================
@@ -869,6 +908,12 @@
   // ==================================================================
   function prepararLoja() {
     $("#btnCopiarLink").onclick = () => U.copiar(urlCardapio());
+    $("#papelLargura").value = papelAtual();
+    $("#papelLargura").onchange = () => {
+      U.gravarLocal("wl_papel", $("#papelLargura").value);
+      U.toast("Papel " + $("#papelLargura").value + " mm salvo neste computador");
+    };
+    $("#btnTesteImpressao").onclick = imprimirTeste;
     $("#formLoja").addEventListener("submit", e => { e.preventDefault(); salvarLoja(); });
     prepararImagem("#lLogoArquivo", "#lLogo", "#lLogoPrevia", "#lLogoRemover");
   }
