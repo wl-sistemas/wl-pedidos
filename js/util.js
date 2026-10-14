@@ -82,8 +82,13 @@
       const r = parseInt(cor.slice(1, 3), 16), g = parseInt(cor.slice(3, 5), 16), b = parseInt(cor.slice(5, 7), 16);
       const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
       const raiz = document.documentElement.style;
+      // Tons derivados calculados aqui (funciona em celulares antigos, sem color-mix)
+      const misturar = p => "#" + [r, g, b].map(c => Math.round(c * p + 255 * (1 - p)).toString(16).padStart(2, "0")).join("");
       raiz.setProperty("--cor", cor);
       raiz.setProperty("--cor-texto", lum > 0.62 ? "#1c1b1a" : "#ffffff");
+      raiz.setProperty("--cor-suave", misturar(0.12));
+      raiz.setProperty("--cor-foco", misturar(0.55));
+      raiz.setProperty("--cor-anel", "rgba(" + r + "," + g + "," + b + ",.22)");
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute("content", cor);
     },

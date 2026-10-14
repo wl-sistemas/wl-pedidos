@@ -636,7 +636,7 @@
     $("#confNovo").className = balcao ? "btn btn-cor btn-bloco" : "btn btn-texto btn-bloco";
 
     $("#telaConfirmado").classList.remove("oculto");
-    document.body.style.overflow = "hidden";
+    travarRolagem();
     (balcao ? $("#confNovo") : $("#confAcompanhar")).focus();
   }
 
@@ -646,20 +646,38 @@
   let folhaAberta = null;
   let focoAntes = null;
 
+  // Trava a pagina de tras enquanto uma janela esta aberta.
+  // No iPhone so "overflow: hidden" nao basta: fixamos o body e guardamos a posicao.
+  let travas = 0;
+  let rolagemSalva = 0;
+  function travarRolagem() {
+    if (travas++ > 0) return;
+    rolagemSalva = window.scrollY || window.pageYOffset || 0;
+    const s = document.body.style;
+    s.position = "fixed"; s.top = -rolagemSalva + "px"; s.left = "0"; s.right = "0"; s.width = "100%"; s.overflow = "hidden";
+  }
+  function liberarRolagem() {
+    if (travas === 0 || --travas > 0) return;
+    const s = document.body.style;
+    s.position = ""; s.top = ""; s.left = ""; s.right = ""; s.width = ""; s.overflow = "";
+    window.scrollTo(0, rolagemSalva);
+  }
+
   function abrirFolha(sel) {
     focoAntes = document.activeElement;
     folhaAberta = $(sel);
+    if (folhaAberta.classList.contains("oculto")) travarRolagem();
     folhaAberta.classList.remove("oculto");
-    document.body.style.overflow = "hidden";
     const corpo = folhaAberta.querySelector(".folha-corpo");
     if (corpo) corpo.scrollTop = 0;
     folhaAberta.querySelector(".folha-fechar").focus();
   }
   function fecharFolha(sel) {
     const f = $(sel);
+    const estavaAberta = !f.classList.contains("oculto");
     f.classList.add("oculto");
     if (folhaAberta === f) folhaAberta = null;
-    document.body.style.overflow = "";
+    if (estavaAberta) liberarRolagem();
     if (focoAntes && document.contains(focoAntes)) focoAntes.focus();
   }
 
@@ -676,8 +694,8 @@
     $("#btnCopiarPix").onclick = () => U.copiar(loja.chave_pix);
     $("#confNovo").onclick = () => {
       $("#telaConfirmado").classList.add("oculto");
-      document.body.style.overflow = "";
-      window.scrollTo({ top: 0 });
+      liberarRolagem();
+      window.scrollTo(0, 0);
     };
   }
 

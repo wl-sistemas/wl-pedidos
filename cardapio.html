@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="format-detection" content="telephone=no">
   <meta name="theme-color" content="#0f766e">
   <title>Cardápio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400..800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/cardapio.css">
 </head>
@@ -59,7 +60,7 @@
   <div id="folhaProduto" class="folha oculto" role="dialog" aria-modal="true" aria-labelledby="produtoNome">
     <div class="folha-fundo" data-fechar></div>
     <div class="folha-caixa">
-      <button class="folha-fechar" type="button" data-fechar aria-label="Fechar">✕</button>
+      <button class="folha-fechar" type="button" data-fechar aria-label="Fechar"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
       <div id="produtoImagem" class="produto-imagem oculto"></div>
       <div class="folha-corpo">
         <h2 id="produtoNome"></h2>
@@ -85,7 +86,7 @@
   <div id="folhaPedido" class="folha oculto" role="dialog" aria-modal="true" aria-labelledby="tituloPedido">
     <div class="folha-fundo" data-fechar></div>
     <div class="folha-caixa folha-alta">
-      <button class="folha-fechar" type="button" data-fechar aria-label="Fechar">✕</button>
+      <button class="folha-fechar" type="button" data-fechar aria-label="Fechar"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
       <div class="folha-corpo">
         <h2 id="tituloPedido">Seu pedido</h2>
 

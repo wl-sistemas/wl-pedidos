@@ -112,7 +112,7 @@
 .prod-texto small { color: var(--suave); }
 .prod-acoes { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .prod-oculto .prod-texto strong, .prod-oculto .prod-foto { opacity: .5; }
-.esgotado-btn { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, white); }
+.esgotado-btn { color: var(--ok); border-color: #a5d0b7; }
 .esgotado-btn[aria-pressed="true"] { background: #fdecea; color: var(--perigo); border-color: #f5c2bd; }
 
 /* ---------- Editor (modal) ---------- */
