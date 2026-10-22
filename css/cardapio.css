@@ -233,3 +233,12 @@ body { padding-bottom: 96px; }
 .etapa.atual { color: var(--tinta); font-weight: 700; }
 .etapa.atual::before { background: var(--cor); box-shadow: 0 0 0 5px var(--cor-anel); }
 .acomp-acoes { display: grid; gap: 10px; }
+
+/* ---------- Local de entrega no mapa (Etapa 2) ---------- */
+.bloco-local { margin: -4px 0 16px; padding: 14px; border-radius: var(--raio); background: var(--cor-suave); border: 1px solid var(--linha); }
+.local-titulo { margin: 0; font-weight: 800; font-family: var(--fonte-titulo); font-size: 17px; }
+.local-texto { margin: 2px 0 10px; font-size: 14px; color: var(--suave); }
+.local-botoes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.local-dica { margin: 8px 0 0; font-size: 13px; color: var(--suave); }
+.local-resultado { margin: 10px 0 0; padding: 10px 12px; border-radius: var(--raio-p); background: #e9f7ee; color: #17663a; font-weight: 700; font-size: 15px; }
+.local-resultado.erro { background: #fdecea; color: #7a1a12; }

@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400..800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/base.css?v=20261022">
-  <link rel="stylesheet" href="css/painel.css?v=20261022">
+  <link rel="stylesheet" href="css/base.css?v=20261022b">
+  <link rel="stylesheet" href="css/painel.css?v=20261022b">
 </head>
 <body>
   <div id="carregando" class="carregando"><div class="girando"></div><span>Abrindo o painel…</span></div>
@@ -52,7 +52,24 @@
         <label><input type="radio" name="filtro" value="andamento" checked><span>Em andamento <b id="qtdAndamento"></b></span></label>
         <label><input type="radio" name="filtro" value="finalizados"><span>Finalizados hoje <b id="qtdFinalizados"></b></span></label>
         <label><input type="radio" name="filtro" value="cancelados"><span>Cancelados hoje <b id="qtdCancelados"></b></span></label>
+        <label><input type="radio" name="filtro" value="historico"><span>Histórico</span></label>
       </div>
+
+      <form id="historicoBusca" class="historico-busca cartao oculto" novalidate>
+        <div class="historico-atalhos" role="group" aria-label="Período">
+          <button type="button" class="btn btn-p" data-periodo="0">Hoje</button>
+          <button type="button" class="btn btn-p" data-periodo="1">Ontem</button>
+          <button type="button" class="btn btn-p" data-periodo="7">7 dias</button>
+          <button type="button" class="btn btn-p" data-periodo="30">30 dias</button>
+        </div>
+        <div class="historico-campos">
+          <label class="campo"><span>De</span><input id="hDe" type="date"></label>
+          <label class="campo"><span>Até</span><input id="hAte" type="date"></label>
+          <label class="campo historico-texto"><span>Nome, telefone ou nº do pedido</span><input id="hBusca" type="search" placeholder="Opcional"></label>
+          <button id="btnHistorico" class="btn btn-escuro" type="submit">Buscar</button>
+        </div>
+        <p id="hResumo" class="historico-resumo"></p>
+      </form>
 
       <p id="statusConexao" class="conexao"></p>
       <div id="listaPedidos" class="lista-pedidos"></div>
@@ -126,8 +143,40 @@
               <label><input type="checkbox" id="lRetirada"> Retirada no local</label>
               <label><input type="checkbox" id="lMesa"> Pedido na mesa</label>
             </fieldset>
+            <fieldset class="bloco-modo">
+              <legend>Como cobrar a entrega</legend>
+              <div class="segmentado modo-taxa">
+                <label><input type="radio" name="modoTaxa" value="fixa"><span>Taxa fixa</span></label>
+                <label><input type="radio" name="modoTaxa" value="distancia"><span>Por distância (km)</span></label>
+              </div>
+            </fieldset>
+
+            <div id="blocoDistancia" class="bloco-distancia oculto">
+              <div class="campo">
+                <span>Onde fica a loja</span>
+                <small>Clique no mapa ou arraste o alfinete até a porta da loja. A distância é medida daqui até o cliente.</small>
+                <div class="busca-endereco">
+                  <input id="lBuscaEndereco" placeholder="Buscar endereço, ex.: Av. Presidente Vargas, 500, Rolândia">
+                  <button id="btnBuscaEndereco" class="btn btn-p" type="button">Buscar</button>
+                  <button id="btnLocalLoja" class="btn btn-p" type="button">📍 Usar localização deste aparelho</button>
+                </div>
+                <ul id="resultadosEndereco" class="resultados-endereco oculto"></ul>
+                <div id="mapaLoja" class="mapa mapa-loja"></div>
+                <small id="lLocalTexto" class="local-loja-texto">Local ainda não marcado.</small>
+              </div>
+
+              <div class="campo">
+                <span>Faixas de distância</span>
+                <small>O cliente paga o valor da primeira faixa que alcança a casa dele. Acima da última faixa, a loja não entrega.</small>
+                <div id="listaFaixas" class="lista-faixas"></div>
+                <button id="btnAddFaixa" class="btn btn-p" type="button">+ Adicionar faixa</button>
+              </div>
+              <label class="check-linha"><input type="checkbox" id="lExigirLocal"> Exigir que o cliente marque o local no mapa</label>
+            </div>
+
             <div class="secao-campos secao-campos-3">
-              <label class="campo"><span>Taxa de entrega</span><span class="campo-reais"><i>R$</i><input id="lTaxa" inputmode="decimal" placeholder="0,00"></span></label>
+              <label class="campo"><span id="lTaxaRotulo">Taxa de entrega</span><span class="campo-reais"><i>R$</i><input id="lTaxa" inputmode="decimal" placeholder="0,00"></span>
+                <small id="lTaxaAjuda" class="oculto">Cobrada quando o cliente não marca o local no mapa.</small></label>
               <label class="campo"><span>Pedido mínimo</span><span class="campo-reais"><i>R$</i><input id="lMinimo" inputmode="decimal" placeholder="0,00"></span></label>
             </div>
             <label class="campo"><span>Endereço da loja</span><input id="lEndereco" maxlength="200" placeholder="Rua, número, bairro, cidade"><small>Aparece para quem escolhe retirar no local.</small></label>
@@ -135,8 +184,14 @@
 
           <section class="cartao secao-loja">
             <h3>Funcionamento</h3>
-            <p class="texto-suave">Use o botão "Aberta/Fechada" no topo para abrir e fechar a loja.</p>
-            <label class="campo"><span>Mensagem quando a loja estiver fechada</span>
+            <p class="texto-suave">Escolha entre abrir e fechar pelo botão do topo ou deixar no automático.</p>
+            <label class="check-linha check-destaque"><input type="checkbox" id="lAuto"> Abrir e fechar sozinha nos horários abaixo</label>
+            <div id="blocoHorarios" class="bloco-horarios oculto">
+              <div id="listaHorarios" class="lista-horarios"></div>
+              <button id="btnCopiarHorario" class="btn btn-p" type="button">Copiar o primeiro dia marcado para os outros dias marcados</button>
+              <small class="texto-suave">Se fechar depois da meia-noite (ex.: 18:00 às 01:00), coloque no dia em que abre. No topo, o botão "Fechar agora" fecha até o próximo horário.</small>
+            </div>
+            <label class="campo"><span>Mensagem quando a loja estiver fechada (opcional)</span>
               <input id="lMsgFechada" maxlength="200" placeholder="Ex.: Abrimos de terça a domingo, das 18h às 23h."></label>
           </section>
 
@@ -286,10 +341,10 @@
 
   <div id="impressao" aria-hidden="true"></div>
 
-  <script src="config.js?v=20261022"></script>
-  <script src="js/util.js?v=20261022"></script>
-  <script src="js/api.js?v=20261022"></script>
-  <script src="js/demo.js?v=20261022"></script>
-  <script src="js/painel.js?v=20261022"></script>
+  <script src="config.js?v=20261022b"></script>
+  <script src="js/util.js?v=20261022b"></script>
+  <script src="js/api.js?v=20261022b"></script>
+  <script src="js/demo.js?v=20261022b"></script>
+  <script src="js/painel.js?v=20261022b"></script>
 </body>
 </html>

@@ -19,6 +19,8 @@
   let tipo = null;
   let pagamento = null;
   let atual = null; // produto aberto na folha
+  let local = null;  // {lat, lng} do cliente para entrega
+  let mapaCli = null;
 
   // ------------------------------------------------------------------
   // Inicio
@@ -87,26 +89,25 @@
       img.onerror = () => { img.classList.add("oculto"); $("#lojaInicial").classList.remove("oculto"); };
     }
 
-    const status = $("#lojaStatus");
-    status.textContent = loja.aberta ? "Aberto agora" : "Fechado no momento";
-    status.classList.toggle("fechada", !loja.aberta);
+    desenharStatus();
 
     const infos = [];
     if (loja.aceita_delivery) {
-      infos.push(Number(loja.taxa_entrega) > 0
-        ? "Entrega <strong>" + moeda(loja.taxa_entrega) + "</strong>"
-        : "Entrega <strong>grátis</strong>");
+      if (usaDistancia()) {
+        const valores = loja.faixas_entrega.map(f => Number(f.valor));
+        const menor = Math.min.apply(null, valores);
+        infos.push(menor > 0 ? "Entrega a partir de <strong>" + moeda(menor) + "</strong>" : "Entrega <strong>conforme a distância</strong>");
+      } else {
+        infos.push(Number(loja.taxa_entrega) > 0
+          ? "Entrega <strong>" + moeda(loja.taxa_entrega) + "</strong>"
+          : "Entrega <strong>grátis</strong>");
+      }
     }
     if (loja.aceita_retirada) infos.push("Retirada no local");
     if (loja.aceita_mesa) infos.push("Pedido na mesa");
     if (Number(loja.pedido_minimo) > 0) infos.push("Pedido mínimo <strong>" + moeda(loja.pedido_minimo) + "</strong>");
     $("#lojaInfos").innerHTML = infos.map(i => "<li>" + i + "</li>").join("");
 
-    if (lojaFechada()) {
-      const aviso = $("#avisoFechada");
-      aviso.textContent = loja.mensagem_fechada || "A loja está fechada agora. Você pode ver o cardápio, mas os pedidos voltam quando ela abrir.";
-      aviso.classList.remove("oculto");
-    }
 
     if (balcao) {
       $("#faixaBalcao").classList.remove("oculto");
@@ -117,6 +118,41 @@
     $("#rodapeWL").textContent = "Cardápio digital feito com " + (C.nomeSistema || "WL Pedidos");
     $("#rodapeWL").href = U.linkWhatsapp(C.suporteWhatsapp,
       "Olá! Vi o cardápio digital da " + loja.nome + " e quero um para a minha loja.");
+  }
+
+  // Aberto/fechado, com o horario quando a loja usa horario automatico
+  function desenharStatus() {
+    const status = $("#lojaStatus");
+    let texto = loja.aberta ? "Aberto agora" : "Fechado no momento";
+    if (loja.aberta && loja.horario_automatico && loja.fecha_em) texto = "Aberto agora · fecha " + U.quando(loja.fecha_em, loja.fuso).replace(/^hoje /, "");
+    if (!loja.aberta && loja.horario_automatico && loja.abre_em) texto = "Fechado · abre " + U.quando(loja.abre_em, loja.fuso);
+    status.textContent = texto;
+    status.classList.toggle("fechada", !loja.aberta);
+
+    const aviso = $("#avisoFechada");
+    if (lojaFechada()) {
+      const quando = loja.horario_automatico && loja.abre_em ? " Abrimos " + U.quando(loja.abre_em, loja.fuso) + "." : "";
+      aviso.textContent = (loja.mensagem_fechada || "A loja está fechada agora." + quando) +
+        " Você pode ver o cardápio, mas os pedidos voltam quando ela abrir.";
+      aviso.classList.remove("oculto");
+    } else {
+      aviso.classList.add("oculto");
+    }
+  }
+
+  // Confere de novo se a loja abriu/fechou (o cliente pode ficar muito tempo na pagina)
+  let ultimaConferencia = Date.now();
+  async function conferirLoja() {
+    if (Date.now() - ultimaConferencia < 60000 && loja.aberta) return;
+    ultimaConferencia = Date.now();
+    try {
+      const dados = await WL.rpc("cardapio_publico", { p_slug: slug });
+      if (dados && dados.loja && dados.loja.ativa) {
+        Object.assign(loja, dados.loja);
+        desenharStatus();
+        if (!$("#folhaPedido").classList.contains("oculto")) atualizarValores();
+      }
+    } catch (e) { /* segue com o que ja tem */ }
   }
 
   // ------------------------------------------------------------------
@@ -436,8 +472,90 @@
   function subtotal() {
     return carrinho.reduce((s, i) => s + precoUnitario(produtoPorId[i.produto_id], i.tamanho_id, i.opcoes) * i.quantidade, 0);
   }
+  // ------------------------------------------------------------------
+  // Taxa de entrega (fixa ou por distancia). O banco confere de novo.
+  // ------------------------------------------------------------------
+  function usaDistancia() {
+    return loja.modo_taxa === "distancia" && loja.latitude != null && loja.longitude != null &&
+      Array.isArray(loja.faixas_entrega) && loja.faixas_entrega.length > 0;
+  }
+  function distancia() {
+    return local && loja.latitude != null ? U.distanciaKm(loja.latitude, loja.longitude, local.lat, local.lng) : null;
+  }
+  function raioMaximo() {
+    return Math.max.apply(null, loja.faixas_entrega.map(f => Number(f.ate_km)));
+  }
+  // null = fora da area de entrega
   function taxa() {
-    return tipo === "Delivery" ? Number(loja.taxa_entrega || 0) : 0;
+    if (tipo !== "Delivery") return 0;
+    if (!usaDistancia() || !local) return Number(loja.taxa_entrega || 0);
+    return U.taxaPorDistancia(loja.faixas_entrega, distancia());
+  }
+  function foraDaArea() { return tipo === "Delivery" && usaDistancia() && local && taxa() === null; }
+  function faltaLocal() { return tipo === "Delivery" && usaDistancia() && !local && loja.exigir_localizacao && !balcao; }
+
+  function prepararLocal() {
+    if (!usaDistancia()) return;
+    $("#blocoLocal").classList.remove("oculto");
+    if (!loja.exigir_localizacao) {
+      $("#localTexto").textContent = "A taxa depende da distância. Marque onde vamos entregar para calcular" +
+        (Number(loja.taxa_entrega) > 0 ? " (sem marcar, a taxa é " + moeda(loja.taxa_entrega) + ")." : ".");
+    }
+    $("#btnMinhaLocal").onclick = async () => {
+      await U.ocupado($("#btnMinhaLocal"), "Procurando…", async () => {
+        try {
+          const p = await U.minhaLocalizacao();
+          await abrirMapa(p.lat, p.lng, true);
+          if (p.precisao > 150) U.toast("Localização aproximada. Ajuste o alfinete na sua casa.");
+        } catch (e) {
+          U.toast(e.message, "erro");
+          abrirMapa();
+        }
+      });
+    };
+    $("#btnMarcarMapa").onclick = () => abrirMapa();
+    // local salvo do ultimo pedido
+    const salvo = balcao ? {} : U.lerLocal(CHAVE_CLIENTE, {});
+    if (Number.isFinite(salvo.lat) && Number.isFinite(salvo.lng)) {
+      local = { lat: salvo.lat, lng: salvo.lng };
+      desenharLocal();
+    }
+  }
+
+  async function abrirMapa(lat, lng, marcar) {
+    const caixa = $("#mapaCliente");
+    caixa.classList.remove("oculto");
+    $("#localDica").classList.remove("oculto");
+    const la = lat != null ? lat : local ? local.lat : loja.latitude;
+    const ln = lng != null ? lng : local ? local.lng : loja.longitude;
+    try {
+      if (!mapaCli) {
+        mapaCli = await U.criarMapa(caixa, la, ln, 16, (a, b) => { local = { lat: a, lng: b }; desenharLocal(); });
+      } else {
+        mapaCli.mapa.invalidateSize();
+      }
+      if (marcar || local) mapaCli.mover(la, ln, true);
+      else { mapaCli.alfinete.setLatLng([la, ln]); mapaCli.mapa.setView([la, ln], 15); }
+      setTimeout(() => mapaCli.mapa.invalidateSize(), 200);
+      caixa.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (e) {
+      caixa.classList.add("oculto");
+      U.toast(e.message, "erro");
+    }
+  }
+
+  function desenharLocal() {
+    const r = $("#localResultado");
+    if (!local) { r.classList.add("oculto"); atualizarValores(); return; }
+    const km = distancia();
+    const valor = U.taxaPorDistancia(loja.faixas_entrega, km);
+    r.classList.remove("oculto");
+    r.classList.toggle("erro", valor === null);
+    r.textContent = valor === null
+      ? "Este local fica a " + U.km(km) + " da loja, fora da área de entrega (até " + U.km(raioMaximo()) + ")."
+      : "Local marcado a " + U.km(km) + " da loja. Taxa de entrega: " + (valor > 0 ? moeda(valor) : "grátis") + ".";
+    $("#btnMinhaLocal").textContent = "📍 Usar minha localização de novo";
+    atualizarValores();
   }
 
   function atualizarBarra(animar) {
@@ -501,8 +619,11 @@
     const sub = subtotal();
     $("#valSubtotal").textContent = moeda(sub);
     $("#linhaTaxa").classList.toggle("oculto", tipo !== "Delivery");
-    $("#valTaxa").textContent = Number(loja.taxa_entrega) > 0 ? moeda(taxa()) : "Grátis";
-    $("#valTotal").textContent = moeda(sub + taxa());
+    const t = taxa();
+    const km = tipo === "Delivery" && usaDistancia() ? distancia() : null;
+    $("#linhaTaxa span").textContent = km != null ? "Taxa de entrega (" + U.km(km) + ")" : "Taxa de entrega";
+    $("#valTaxa").textContent = t === null ? "Fora da área" : faltaLocal() ? "Marque no mapa" : t > 0 ? moeda(t) : "Grátis";
+    $("#valTotal").textContent = moeda(sub + (t || 0));
 
     const minimo = Number(loja.pedido_minimo || 0);
     const aviso = $("#avisoMinimo");
@@ -514,6 +635,9 @@
     if (lojaFechada()) {
       btn.disabled = true;
       btn.textContent = "Loja fechada no momento";
+    } else if (foraDaArea() && !balcao) {
+      btn.disabled = true;
+      btn.textContent = "Fora da área de entrega";
     } else {
       btn.disabled = abaixo;
       btn.textContent = balcao ? "Lançar pedido" : "Enviar pedido";
@@ -559,6 +683,7 @@
     }
 
     $("#formPedido").addEventListener("submit", e => { e.preventDefault(); enviarPedido(); });
+    prepararLocal();
     ajustarCampos();
   }
 
@@ -566,6 +691,7 @@
     $("#campoEndereco").classList.toggle("oculto", tipo !== "Delivery");
     $("#campoMesa").classList.toggle("oculto", tipo !== "Mesa");
     $("#campoTroco").classList.toggle("oculto", pagamento !== "Dinheiro");
+    if (mapaCli && tipo === "Delivery") setTimeout(() => mapaCli.mapa.invalidateSize(), 50);
   }
 
   function mostrarErro(msg) {
@@ -589,10 +715,12 @@
     if (!balcao && telefone.replace(/\D/g, "").length < 10) return mostrarErro("Informe seu WhatsApp com DDD.");
     if (tipo === "Delivery" && endereco.length < 5) return mostrarErro("Informe o endereço de entrega.");
     if (tipo === "Mesa" && !mesa) return mostrarErro("Informe a mesa ou comanda.");
+    if (faltaLocal()) return mostrarErro("Marque no mapa o local de entrega para calcular a taxa.");
+    if (foraDaArea() && !balcao) return mostrarErro("Este local está fora da área de entrega da loja.");
     if (pagamento === "Dinheiro" && $("#cTroco").value.trim()) {
       troco = U.numero($("#cTroco").value);
       if (!Number.isFinite(troco) || troco <= 0) return mostrarErro("Informe um valor de troco válido, ex.: 50");
-      if (troco < subtotal() + taxa()) return mostrarErro("O troco precisa ser maior que o total do pedido.");
+      if (troco < subtotal() + (taxa() || 0)) return mostrarErro("O troco precisa ser maior que o total do pedido.");
     }
 
     const pedido = {
@@ -602,6 +730,7 @@
       pagamento, troco_para: troco, observacao: obs,
       origem: balcao ? "Manual" : "Cliente"
     };
+    if (tipo === "Delivery" && local) { pedido.latitude = local.lat; pedido.longitude = local.lng; }
     const itens = carrinho.map(i => ({
       produto_id: i.produto_id, tamanho_id: i.tamanho_id, opcoes: i.opcoes,
       quantidade: i.quantidade, observacao: i.observacao
@@ -616,14 +745,18 @@
       try {
         const r = await WL.rpc("criar_pedido", { p_slug: slug, p_pedido: pedido, p_itens: itens });
         if (!balcao) {
-          U.gravarLocal(CHAVE_CLIENTE, { nome, telefone, endereco, tipo, pagamento });
+          const lugar = local ? { lat: local.lat, lng: local.lng } : {};
+          U.gravarLocal(CHAVE_CLIENTE, Object.assign({ nome, telefone, endereco, tipo, pagamento }, lugar));
         }
         carrinho = [];
         salvarCarrinho();
         atualizarBarra();
         $("#cObs").value = "";
         $("#cTroco").value = "";
-        if (balcao) { $("#cNome").value = ""; $("#cTelefone").value = ""; $("#cEndereco").value = ""; $("#cMesa").value = ""; }
+        if (balcao) {
+          $("#cNome").value = ""; $("#cTelefone").value = ""; $("#cEndereco").value = ""; $("#cMesa").value = "";
+          local = null; $("#localResultado").classList.add("oculto"); $("#mapaCliente").classList.add("oculto"); $("#localDica").classList.add("oculto");
+        }
         fecharFolha("#folhaPedido");
         mostrarConfirmacao(r, pedido, resumoItens);
       } catch (e) {
@@ -649,7 +782,10 @@
     const linhas = [];
     linhas.push("*Pedido #" + r.numero + "* - " + loja.nome);
     linhas.push("Cliente: " + pedido.cliente_nome);
-    if (pedido.tipo_atendimento === "Delivery") linhas.push("Entrega: " + pedido.endereco);
+    if (pedido.tipo_atendimento === "Delivery") {
+      linhas.push("Entrega: " + pedido.endereco);
+      if (pedido.latitude != null) linhas.push("Localização" + (r.distancia_km != null ? " (" + U.km(r.distancia_km) + ")" : "") + ": " + U.linkMapa(pedido.latitude, pedido.longitude));
+    }
     else if (pedido.tipo_atendimento === "Mesa") linhas.push("Mesa: " + pedido.mesa);
     else linhas.push("Retirada no local");
     linhas.push("");
@@ -728,7 +864,11 @@
     $("#qtdMais").onclick = () => { atual.qtd = Math.min(99, atual.qtd + 1); $("#qtdValor").textContent = atual.qtd; atualizarTotalProduto(); };
     $("#btnAdicionar").onclick = adicionarAoCarrinho;
 
-    $("#barraCarrinho").onclick = () => { montarPedido(); abrirFolha("#folhaPedido"); };
+    $("#barraCarrinho").onclick = () => {
+      montarPedido(); abrirFolha("#folhaPedido");
+      conferirLoja();
+      if (mapaCli) setTimeout(() => mapaCli.mapa.invalidateSize(), 250);
+    };
 
     $("#btnCopiarPix").onclick = () => U.copiar(loja.chave_pix);
     $("#confNovo").onclick = () => {

@@ -65,25 +65,69 @@
     atualizarInterruptor();
 
     $("#chkAberta").onchange = async () => {
-      const aberta = $("#chkAberta").checked;
+      const querAbrir = $("#chkAberta").checked;
+      if (loja.horario_automatico && statusLoja) {
+        atualizarInterruptor(); // so muda depois de confirmar
+        try {
+          if (!querAbrir) {
+            if (!(await U.confirmar("Fechar a loja agora? Ela volta a abrir sozinha no próximo horário.", "Fechar agora", true))) return;
+            statusLoja = await WL.rpc("pausar_loja", { p_loja: lojaId, p_pausar: true });
+            U.toast("Loja fechada até o próximo horário");
+          } else if (statusLoja.pausada && statusLoja.dentro_do_horario) {
+            statusLoja = await WL.rpc("pausar_loja", { p_loja: lojaId, p_pausar: false });
+            U.toast("Loja aberta de novo");
+          } else {
+            U.toast("Fora do horário de funcionamento. Para abrir agora, desligue o horário automático na aba Loja.", "erro");
+          }
+        } catch (e) { U.toast(e.message, "erro"); }
+        atualizarInterruptor();
+        if (filtro === "andamento") desenharPedidos();
+        return;
+      }
       try {
-        const r = await WL.atualizar("lojas", { id: "eq." + lojaId }, { aberta });
+        const r = await WL.atualizar("lojas", { id: "eq." + lojaId }, { aberta: querAbrir });
         if (!r.length) throw new Error("Sem permissão para alterar a loja.");
-        loja.aberta = aberta;
-        U.toast(aberta ? "Loja aberta para pedidos" : "Loja fechada para pedidos");
+        loja.aberta = querAbrir;
+        if (statusLoja) statusLoja.aberta = querAbrir;
+        U.toast(querAbrir ? "Loja aberta para pedidos" : "Loja fechada para pedidos");
       } catch (e) {
         U.toast(e.message, "erro");
       }
       atualizarInterruptor();
+      if (filtro === "andamento") desenharPedidos();
     };
 
     $("#btnSair").onclick = async () => { await WL.sair(); location.href = "login.html"; };
   }
 
+  // Situacao real da loja (considera o horario automatico). null = banco sem a Etapa 2.
+  let statusLoja = null;
+  function lojaAberta() { return statusLoja ? !!statusLoja.aberta : !!loja.aberta; }
+
+  async function atualizarStatusLoja() {
+    try {
+      statusLoja = await WL.rpc("status_loja", { p_loja: lojaId });
+    } catch (e) {
+      statusLoja = null;
+    }
+    atualizarInterruptor();
+  }
+
   function atualizarInterruptor() {
-    $("#chkAberta").checked = !!loja.aberta;
-    $("#txtAberta").textContent = loja.aberta ? "Aberta" : "Fechada";
-    $(".interruptor").classList.toggle("desligado", !loja.aberta);
+    const aberta = lojaAberta();
+    let texto = aberta ? "Aberta" : "Fechada";
+    if (loja.horario_automatico && statusLoja) {
+      if (aberta && statusLoja.fecha_em) texto = "Aberta · até " + U.quando(statusLoja.fecha_em, loja.fuso).replace(/^hoje às /, "");
+      else if (!aberta && statusLoja.pausada && statusLoja.dentro_do_horario) texto = "Fechada agora";
+      else if (!aberta && statusLoja.abre_em) texto = "Fechada · abre " + U.quando(statusLoja.abre_em, loja.fuso).replace(/ às /, " ");
+    }
+    $("#chkAberta").checked = aberta;
+    $("#txtAberta").textContent = texto;
+    $(".interruptor").classList.toggle("desligado", !aberta);
+    $(".interruptor").classList.toggle("automatico", !!loja.horario_automatico);
+    $(".interruptor").title = loja.horario_automatico
+      ? "Horário automático ligado. Clique para fechar agora (volta a abrir no próximo horário)."
+      : "Abrir ou fechar a loja para pedidos";
   }
 
   function prepararAbas() {
@@ -109,7 +153,18 @@
   let buscando = false;
 
   function prepararPedidos() {
-    $$('input[name="filtro"]').forEach(r => r.addEventListener("change", () => { filtro = r.value; desenharPedidos(); }));
+    $$('input[name="filtro"]').forEach(r => r.addEventListener("change", () => {
+      filtro = r.value;
+      $("#historicoBusca").classList.toggle("oculto", filtro !== "historico");
+      if (filtro === "historico" && !historicoCarregado) { definirPeriodo(7); carregarHistorico(); }
+      desenharPedidos();
+    }));
+    $("#historicoBusca").addEventListener("submit", e => { e.preventDefault(); carregarHistorico(); });
+    $$("[data-periodo]").forEach(b => b.addEventListener("click", () => {
+      const n = Number(b.dataset.periodo);
+      definirPeriodo(n === 1 ? -1 : n);
+      carregarHistorico();
+    }));
 
     Alarme.preparar();
 
@@ -150,7 +205,9 @@
     Relogio.cadaSegundo(() => {
       segundos++;
       if (segundos % (INTERVALO / 1000) === 0) cicloPedidos();
+      if (segundos % 60 === 0) atualizarStatusLoja();
     });
+    atualizarStatusLoja();
     Relogio.iniciar();
     cicloPedidos();
   }
@@ -180,13 +237,7 @@
     andamento = a;
     doDia = d;
 
-    const faltando = [...new Set(a.concat(d).map(p => p.id))].filter(id => !itensPorPedido[id]);
-    for (let i = 0; i < faltando.length; i += 80) {
-      const parte = faltando.slice(i, i + 80);
-      const itens = await WL.listar("itens_pedido", { select: "*", pedido_id: "in.(" + parte.join(",") + ")", order: "id" });
-      parte.forEach(id => { itensPorPedido[id] = []; });
-      itens.forEach(it => itensPorPedido[it.pedido_id].push(it));
-    }
+    await carregarItens(a.concat(d));
 
     const novos = [];
     a.forEach(p => {
@@ -201,6 +252,65 @@
 
     desenharResumo();
     desenharPedidos();
+  }
+
+  async function carregarItens(pedidos) {
+    const faltando = [...new Set(pedidos.map(p => p.id))].filter(id => !itensPorPedido[id]);
+    for (let i = 0; i < faltando.length; i += 80) {
+      const parte = faltando.slice(i, i + 80);
+      const itens = await WL.listar("itens_pedido", { select: "*", pedido_id: "in.(" + parte.join(",") + ")", order: "id" });
+      parte.forEach(id => { itensPorPedido[id] = []; });
+      itens.forEach(it => itensPorPedido[it.pedido_id].push(it));
+    }
+  }
+
+  // ---------- Historico (dias anteriores, com busca) ----------
+  let historico = [];
+  let historicoCarregado = false;
+
+  function dataMenos(dias) {
+    const hoje = U.hojeNoFuso(loja.fuso);
+    const d = new Date(hoje + "T12:00:00Z");
+    d.setUTCDate(d.getUTCDate() - dias);
+    return d.toISOString().slice(0, 10);
+  }
+  // n=0 hoje, n=-1 ontem, n>0 ultimos n dias
+  function definirPeriodo(n) {
+    if (n === -1) { $("#hDe").value = dataMenos(1); $("#hAte").value = dataMenos(1); }
+    else { $("#hDe").value = dataMenos(Math.max(0, n - 1)); $("#hAte").value = dataMenos(0); }
+  }
+
+  async function carregarHistorico() {
+    let de = $("#hDe").value, ate = $("#hAte").value;
+    if (!de || !ate) { definirPeriodo(7); de = $("#hDe").value; ate = $("#hAte").value; }
+    if (de > ate) { [de, ate] = [ate, de]; $("#hDe").value = de; $("#hAte").value = ate; }
+    $("#hResumo").textContent = "Buscando…";
+    try {
+      historico = await WL.rpc("historico_pedidos", { p_loja: lojaId, p_de: de, p_ate: ate, p_busca: $("#hBusca").value.trim() || null });
+      historicoCarregado = true;
+      await carregarItens(historico);
+    } catch (e) {
+      historico = [];
+      $("#hResumo").textContent = /historico_pedidos/.test(e.message) ? "Falta rodar o script 08-etapa2.sql no Supabase." : e.message;
+      desenharPedidos();
+      return;
+    }
+    desenharResumoHistorico();
+    desenharPedidos();
+  }
+
+  function desenharResumoHistorico() {
+    const validos = historico.filter(p => p.status !== "Cancelado");
+    const total = validos.reduce((s, p) => s + Number(p.total), 0);
+    const aReceber = validos.filter(p => !p.pago).reduce((s, p) => s + Number(p.total), 0);
+    const entregas = validos.reduce((s, p) => s + Number(p.taxa_entrega || 0), 0);
+    const partes = [validos.length + (validos.length === 1 ? " pedido" : " pedidos"), moeda(total) + " vendidos"];
+    if (validos.length) partes.push("ticket médio " + moeda(total / validos.length));
+    if (entregas > 0) partes.push(moeda(entregas) + " em taxas de entrega");
+    if (aReceber > 0) partes.push("a receber " + moeda(aReceber));
+    const canc = historico.length - validos.length;
+    if (canc) partes.push(canc + (canc === 1 ? " cancelado" : " cancelados"));
+    $("#hResumo").textContent = partes.join(" · ") + (historico.length >= 300 ? ". Mostrando os 300 mais recentes; diminua o período." : "");
   }
 
   function avisarNovos(lista) {
@@ -499,6 +609,7 @@
   function pedidosDoFiltro() {
     if (filtro === "finalizados") return doDia.filter(p => p.status === "Finalizado");
     if (filtro === "cancelados") return doDia.filter(p => p.status === "Cancelado");
+    if (filtro === "historico") return historico;
     return andamento;
   }
 
@@ -520,7 +631,10 @@
     const caixa = $("#listaPedidos");
     if (!lista.length) {
       const msg = filtro === "andamento"
-        ? (loja.aberta ? "Nenhum pedido em andamento. Os novos aparecem aqui sozinhos." : "A loja está fechada. Ligue o botão \"Aberta\" no topo para receber pedidos.")
+        ? (lojaAberta() ? "Nenhum pedido em andamento. Os novos aparecem aqui sozinhos."
+          : loja.horario_automatico ? "A loja está fechada agora. Ela abre sozinha no próximo horário."
+          : "A loja está fechada. Ligue o botão \"Aberta\" no topo para receber pedidos.")
+        : filtro === "historico" ? (historicoCarregado ? "Nenhum pedido encontrado nesse período." : "")
         : "Nada por aqui hoje.";
       caixa.innerHTML = '<p class="vazio">' + esc(msg) + "</p>";
       return;
@@ -547,6 +661,9 @@
         <p class="pedido-cliente"><strong>${esc(p.cliente_nome)}</strong>
           ${p.telefone ? `<a href="${U.linkWhatsapp(p.telefone)}" target="_blank" rel="noopener">${esc(U.telefoneBonito(p.telefone))}</a>` : ""}</p>
         ${p.endereco ? `<p class="pedido-endereco">${esc(p.endereco)}</p>` : ""}
+        ${p.latitude != null ? `<p class="pedido-local"><span class="tipo tipo-km">📍 ${p.distancia_km != null ? U.km(p.distancia_km) : "local marcado"}</span>
+          <a href="${U.linkMapa(p.latitude, p.longitude)}" target="_blank" rel="noopener">Abrir no mapa</a></p>` : ""}
+        ${filtro === "historico" ? `<p class="pedido-data">${U.dataHora(p.criado_em)}</p>` : ""}
 
         <ul class="pedido-itens">
           ${itens.map(i => `
@@ -579,13 +696,14 @@
             ${prox ? `<button class="btn btn-cor btn-avancar" data-acao="avancar" data-status="${esc(prox)}" type="button">${esc(TEXTO_BOTAO[prox] || prox)}</button>` : ""}
             <button class="btn btn-p" data-acao="imprimir" type="button">Imprimir</button>
             ${p.telefone ? '<button class="btn btn-p" data-acao="whatsapp" type="button">WhatsApp</button>' : ""}
+            ${p.tipo_atendimento === "Delivery" && p.status !== "Finalizado" ? '<button class="btn btn-p" data-acao="entregador" type="button" title="Mandar endereço e localização para o entregador">Entregador</button>' : ""}
             ${p.status !== "Finalizado" ? '<button class="btn btn-p btn-texto btn-perigo" data-acao="cancelar" type="button">Cancelar</button>' : ""}
           </div>`}
       </article>`;
   }
 
   function acharPedido(id) {
-    return andamento.find(p => p.id === id) || doDia.find(p => p.id === id);
+    return andamento.find(p => p.id === id) || doDia.find(p => p.id === id) || historico.find(p => p.id === id);
   }
 
   async function aoClicarPedido(e) {
@@ -609,6 +727,8 @@
       imprimir(p);
     } else if (acao === "whatsapp") {
       U.abrirLink(U.linkWhatsapp(p.telefone, mensagemCliente(p)));
+    } else if (acao === "entregador") {
+      U.abrirLink(U.linkWhatsapp("", mensagemEntregador(p)));
     } else if (acao === "cancelar") {
       cancelandoId = p.id;
       $("#mcMotivo").value = "";
@@ -621,6 +741,8 @@
         const r = await WL.excluir("pedidos", { id: "eq." + p.id });
         if (!r.length) throw new Error("Não foi possível excluir. Só pedidos cancelados podem ser excluídos.");
         doDia = doDia.filter(x => x.id !== p.id);
+        historico = historico.filter(x => x.id !== p.id);
+        if (filtro === "historico") desenharResumoHistorico();
         desenharResumo(); desenharPedidos();
         U.toast("Pedido excluído");
       } catch (err) { U.toast(err.message, "erro"); }
@@ -635,8 +757,7 @@
       if (!r.length) throw new Error("Não foi possível atualizar o pedido.");
       Object.assign(p, r[0]);
       if (status === "Finalizado" || status === "Cancelado") andamento = andamento.filter(x => x.id !== p.id);
-      const noDia = doDia.find(x => x.id === p.id);
-      if (noDia && noDia !== p) Object.assign(noDia, r[0]);
+      [doDia.find(x => x.id === p.id), historico.find(x => x.id === p.id)].forEach(x => { if (x && x !== p) Object.assign(x, r[0]); });
       desenharResumo();
       desenharPedidos();
       U.toast("Pedido #" + p.numero + ": " + status);
@@ -649,7 +770,8 @@
     try {
       const r = await WL.atualizar("pedidos", { id: "eq." + p.id }, { pago });
       if (!r.length) throw new Error("Não foi possível atualizar o pagamento.");
-      [andamento.find(x => x.id === p.id), doDia.find(x => x.id === p.id), p].forEach(x => { if (x) x.pago = r[0].pago; });
+      [andamento.find(x => x.id === p.id), doDia.find(x => x.id === p.id), historico.find(x => x.id === p.id), p].forEach(x => { if (x) x.pago = r[0].pago; });
+      if (filtro === "historico") desenharResumoHistorico();
       desenharResumo();
       desenharPedidos();
       U.toast("Pedido #" + p.numero + (pago ? ": pago" : ": a receber"));
@@ -685,6 +807,17 @@
     let msg = textos[p.status] || ped + ": " + p.status;
     if (p.status !== "Finalizado" && p.status !== "Cancelado") msg += "\nAcompanhe: " + linkAcompanhar(p);
     return msg;
+  }
+
+  function mensagemEntregador(p) {
+    const linhas = ["*Entrega - " + loja.nome + "*", "Pedido #" + p.numero + " · " + p.cliente_nome];
+    if (p.telefone) linhas.push("Fone: " + U.telefoneBonito(p.telefone));
+    if (p.endereco) linhas.push("Endereço: " + p.endereco);
+    if (p.latitude != null) linhas.push("Localização" + (p.distancia_km != null ? " (" + U.km(p.distancia_km) + ")" : "") + ": " + U.linkMapa(p.latitude, p.longitude));
+    linhas.push(p.pago ? "Pedido JÁ PAGO" : "Cobrar do cliente: " + moeda(p.total) + " (" + (p.pagamento || "pagamento não informado") + ")" +
+      (p.troco_para ? ", levar troco para " + moeda(p.troco_para) : ""));
+    if (Number(p.taxa_entrega) > 0) linhas.push("Taxa de entrega: " + moeda(p.taxa_entrega));
+    return linhas.join("\n");
   }
 
   // Papel da impressora termica: 58 mm (padrao) ou 80 mm, salvo por computador
@@ -727,6 +860,7 @@
       <p>Cliente: ${esc(p.cliente_nome)}</p>
       ${p.telefone ? `<p>Fone: ${esc(U.telefoneBonito(p.telefone))}</p>` : ""}
       ${p.endereco ? `<p>Endereço: ${esc(p.endereco)}</p>` : ""}
+      ${p.distancia_km != null ? `<p>Distância: ${U.km(p.distancia_km)}</p>` : ""}
       <hr>
       ${itens.map(i => `
         <p class="cupom-item"><span>${i.quantidade}x ${esc(i.nome)}${i.tamanho ? " " + esc(i.tamanho) : ""}</span><span>${moeda(i.total)}</span></p>
@@ -1206,6 +1340,201 @@
   // ==================================================================
   let lojaAlterada = false;
 
+  // ---------- Entrega por distancia ----------
+  let localLoja = null;   // {lat, lng}
+  let mapaLoja = null;
+  const CENTRO_PADRAO = { lat: -23.3101, lng: -51.3690 }; // Rolandia-PR (so para abrir o mapa)
+
+  function modoTaxa() { return ($('input[name="modoTaxa"]:checked') || {}).value || "fixa"; }
+
+  function mostrarModoTaxa() {
+    const dist = modoTaxa() === "distancia";
+    $("#blocoDistancia").classList.toggle("oculto", !dist);
+    $("#lTaxaRotulo").textContent = dist ? "Taxa sem localização" : "Taxa de entrega";
+    $("#lTaxaAjuda").classList.toggle("oculto", !dist);
+    if (dist) abrirMapaLoja();
+  }
+
+  async function abrirMapaLoja() {
+    const c = localLoja || CENTRO_PADRAO;
+    try {
+      if (!mapaLoja) {
+        mapaLoja = await U.criarMapa($("#mapaLoja"), c.lat, c.lng, localLoja ? 16 : 14, (la, ln) => {
+          localLoja = { lat: Math.round(la * 1e6) / 1e6, lng: Math.round(ln * 1e6) / 1e6 };
+          desenharLocalLoja();
+          marcarLoja(true);
+        });
+        mapaLoja.alfinete.setOpacity(localLoja ? 1 : 0.35);
+      } else {
+        mapaLoja.alfinete.setLatLng([c.lat, c.lng]);
+        mapaLoja.alfinete.setOpacity(localLoja ? 1 : 0.35);
+        mapaLoja.mapa.setView([c.lat, c.lng], localLoja ? 16 : 14);
+      }
+      setTimeout(() => mapaLoja.mapa.invalidateSize(), 100);
+    } catch (e) {
+      $("#lLocalTexto").textContent = e.message;
+    }
+  }
+
+  function desenharLocalLoja() {
+    if (mapaLoja) mapaLoja.alfinete.setOpacity(localLoja ? 1 : 0.35);
+    $("#lLocalTexto").textContent = localLoja
+      ? "Local da loja marcado (" + localLoja.lat.toFixed(5) + ", " + localLoja.lng.toFixed(5) + ")."
+      : "Local ainda não marcado. Clique no mapa na porta da loja.";
+    $("#lLocalTexto").classList.toggle("alerta", !localLoja);
+  }
+
+  async function buscarEndereco() {
+    const q = $("#lBuscaEndereco").value.trim();
+    const lista = $("#resultadosEndereco");
+    if (q.length < 4) return U.toast("Digite rua, número e cidade.", "erro");
+    await U.ocupado($("#btnBuscaEndereco"), "…", async () => {
+      try {
+        const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=br&accept-language=pt-BR&q=" + encodeURIComponent(q));
+        const dados = await r.json();
+        if (!dados.length) { lista.innerHTML = "<li>Nada encontrado. Tente sem o número ou clique direto no mapa.</li>"; }
+        else {
+          lista.innerHTML = dados.map((d, i) => `<li><button type="button" data-i="${i}">${esc(d.display_name)}</button></li>`).join("");
+          $$("#resultadosEndereco [data-i]").forEach(b => b.onclick = async () => {
+            const d = dados[Number(b.dataset.i)];
+            await abrirMapaLoja();
+            mapaLoja.mover(Number(d.lat), Number(d.lon), true);
+            lista.classList.add("oculto");
+            U.toast("Confira se o alfinete ficou na porta da loja.");
+          });
+        }
+        lista.classList.remove("oculto");
+      } catch (e) {
+        U.toast("Busca indisponível agora. Clique direto no mapa.", "erro");
+      }
+    });
+  }
+
+  function linhaFaixa(f) {
+    return `<div class="faixa">
+        <label>Até <input class="f-km" inputmode="decimal" value="${f.ate_km != null ? String(f.ate_km).replace(".", ",") : ""}" aria-label="Até quantos km"> km</label>
+        <label class="campo-reais"><i>R$</i><input class="f-valor" inputmode="decimal" value="${f.valor != null ? valorTexto(f.valor) : ""}" aria-label="Valor"></label>
+        <button type="button" class="btn btn-p btn-texto btn-perigo" data-remover-faixa aria-label="Remover faixa">✕</button>
+      </div>`;
+  }
+  function desenharFaixas(lista) {
+    const faixas = lista.length ? lista : [{ ate_km: 3, valor: null }];
+    $("#listaFaixas").innerHTML = faixas.map(linhaFaixa).join("") + '<p id="faixaLimite" class="faixa-limite"></p>';
+    atualizarLimiteFaixas();
+  }
+  function lerFaixas() {
+    return $$("#listaFaixas .faixa").map(d => ({
+      ate_km: d.querySelector(".f-km").value.trim() === "" ? NaN : U.numero(d.querySelector(".f-km").value),
+      valor: d.querySelector(".f-valor").value.trim() === "" ? NaN : U.numero(d.querySelector(".f-valor").value)
+    }));
+  }
+  function atualizarLimiteFaixas() {
+    const kms = lerFaixas().map(f => f.ate_km).filter(Number.isFinite);
+    $("#faixaLimite").textContent = kms.length ? "Acima de " + U.km(Math.max.apply(null, kms)) + ": a loja não entrega." : "";
+  }
+
+  // ---------- Horarios da semana ----------
+  const DIAS = [[1, "Segunda"], [2, "Terça"], [3, "Quarta"], [4, "Quinta"], [5, "Sexta"], [6, "Sábado"], [0, "Domingo"]];
+  const HORA_OK = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+  function desenharHorarios(h) {
+    h = h && typeof h === "object" ? h : {};
+    $("#listaHorarios").innerHTML = DIAS.map(([d, nome]) => {
+      const f = Array.isArray(h[d]) ? h[d] : [];
+      const a = f[0] || {}, b = f[1] || {};
+      return `<div class="dia ${f.length ? "" : "dia-fechado"}" data-dia="${d}">
+          <label class="dia-nome"><input type="checkbox" class="h-on" ${f.length ? "checked" : ""}> ${nome}</label>
+          <span class="dia-horas">
+            <input type="time" class="h-abre1" value="${esc(a.abre || "18:00")}" aria-label="${nome}: abre"> às
+            <input type="time" class="h-fecha1" value="${esc(a.fecha || "23:00")}" aria-label="${nome}: fecha">
+            <span class="h-segundo ${f[1] ? "" : "oculto"}">e <input type="time" class="h-abre2" value="${esc(b.abre || "")}" aria-label="${nome}: abre de novo"> às
+              <input type="time" class="h-fecha2" value="${esc(b.fecha || "")}" aria-label="${nome}: fecha de novo"></span>
+            <button type="button" class="btn btn-p btn-texto h-mais ${f[1] ? "oculto" : ""}">+ 2º horário</button>
+          </span>
+          <span class="dia-fechado-texto">Fechado</span>
+        </div>`;
+    }).join("");
+  }
+  function lerHorarios() {
+    const h = {};
+    for (const div of $$("#listaHorarios .dia")) {
+      if (!div.querySelector(".h-on").checked) continue;
+      const nome = div.querySelector(".dia-nome").textContent.trim();
+      const faixas = [];
+      const a1 = div.querySelector(".h-abre1").value, f1 = div.querySelector(".h-fecha1").value;
+      if (!HORA_OK.test(a1) || !HORA_OK.test(f1)) throw new Error("Preencha o horário de " + nome + ".");
+      if (a1 === f1) throw new Error("Em " + nome + ", o horário de abrir e fechar são iguais.");
+      faixas.push({ abre: a1, fecha: f1 });
+      const a2 = div.querySelector(".h-abre2").value, f2 = div.querySelector(".h-fecha2").value;
+      if (!div.querySelector(".h-segundo").classList.contains("oculto") && (a2 || f2)) {
+        if (!HORA_OK.test(a2) || !HORA_OK.test(f2) || a2 === f2) throw new Error("Confira o 2º horário de " + nome + ".");
+        faixas.push({ abre: a2, fecha: f2 });
+      }
+      h[div.dataset.dia] = faixas;
+    }
+    return h;
+  }
+
+  function prepararEntregaHorarios() {
+    $$('input[name="modoTaxa"]').forEach(r => r.addEventListener("change", mostrarModoTaxa));
+    $("#btnBuscaEndereco").onclick = buscarEndereco;
+    $("#lBuscaEndereco").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); buscarEndereco(); } });
+    $("#btnLocalLoja").onclick = async () => {
+      await U.ocupado($("#btnLocalLoja"), "Procurando…", async () => {
+        try {
+          const p = await U.minhaLocalizacao();
+          await abrirMapaLoja();
+          mapaLoja.mover(p.lat, p.lng, true);
+          U.toast(p.precisao > 100 ? "Localização aproximada (" + Math.round(p.precisao) + " m). Ajuste o alfinete na porta da loja." : "Confira se o alfinete ficou na porta da loja.");
+        } catch (e) { U.toast(e.message, "erro"); }
+      });
+    };
+    $("#btnAddFaixa").onclick = () => {
+      const atuais = lerFaixas();
+      const ultimo = atuais.length ? atuais[atuais.length - 1] : { ate_km: 0, valor: 0 };
+      const nova = { ate_km: Number.isFinite(ultimo.ate_km) ? ultimo.ate_km + 2 : null, valor: Number.isFinite(ultimo.valor) ? ultimo.valor + 2 : null };
+      $("#faixaLimite").insertAdjacentHTML("beforebegin", linhaFaixa(nova));
+      atualizarLimiteFaixas();
+      marcarLoja(true);
+    };
+    $("#listaFaixas").addEventListener("click", e => {
+      const b = e.target.closest("[data-remover-faixa]");
+      if (!b) return;
+      if ($$("#listaFaixas .faixa").length === 1) return U.toast("Deixe pelo menos uma faixa.", "erro");
+      b.closest(".faixa").remove();
+      atualizarLimiteFaixas();
+      marcarLoja(true);
+    });
+    $("#listaFaixas").addEventListener("input", atualizarLimiteFaixas);
+
+    $("#lAuto").addEventListener("change", () => $("#blocoHorarios").classList.toggle("oculto", !$("#lAuto").checked));
+    $("#listaHorarios").addEventListener("change", e => {
+      if (e.target.classList.contains("h-on")) e.target.closest(".dia").classList.toggle("dia-fechado", !e.target.checked);
+    });
+    $("#listaHorarios").addEventListener("click", e => {
+      const b = e.target.closest(".h-mais");
+      if (!b) return;
+      const dia = b.closest(".dia");
+      dia.querySelector(".h-segundo").classList.remove("oculto");
+      b.classList.add("oculto");
+      if (!dia.querySelector(".h-abre2").value) { dia.querySelector(".h-abre2").value = "18:00"; dia.querySelector(".h-fecha2").value = "23:00"; }
+      marcarLoja(true);
+    });
+    $("#btnCopiarHorario").onclick = () => {
+      const dias = $$("#listaHorarios .dia").filter(d => d.querySelector(".h-on").checked);
+      if (dias.length < 2) return U.toast("Marque os dias que abrem primeiro.", "erro");
+      const base = dias[0];
+      dias.slice(1).forEach(d => {
+        ["h-abre1", "h-fecha1", "h-abre2", "h-fecha2"].forEach(c => { d.querySelector("." + c).value = base.querySelector("." + c).value; });
+        const dois = !base.querySelector(".h-segundo").classList.contains("oculto");
+        d.querySelector(".h-segundo").classList.toggle("oculto", !dois);
+        d.querySelector(".h-mais").classList.toggle("oculto", dois);
+      });
+      marcarLoja(true);
+      U.toast("Horário copiado. Lembre de salvar.");
+    };
+  }
+
   function prepararLoja() {
     $("#btnCopiarLink").onclick = () => U.copiar(urlCardapio());
     $("#papelLargura").value = papelAtual();
@@ -1217,7 +1546,8 @@
     const form = $("#formLoja");
     form.addEventListener("submit", e => { e.preventDefault(); salvarLoja(); });
     prepararImagem("#lLogoArquivo", "#lLogo", "#lLogoPrevia", "#lLogoRemover");
-    const marcar = () => marcarLoja(true);
+    prepararEntregaHorarios();
+    const marcar = e => { if (e && e.target && e.target.id === "lBuscaEndereco") return; marcarLoja(true); };
     form.addEventListener("input", marcar);
     form.addEventListener("change", marcar);
     // o upload/remocao da logo altera o campo por codigo
@@ -1261,6 +1591,19 @@
     $("#lMesa").checked = loja.aceita_mesa;
     $("#lMsgFechada").value = loja.mensagem_fechada || "";
 
+    // Entrega e horarios (Etapa 2)
+    const modo = loja.modo_taxa === "distancia" ? "distancia" : "fixa";
+    $$('input[name="modoTaxa"]').forEach(r => { r.checked = r.value === modo; });
+    localLoja = loja.latitude != null && loja.longitude != null ? { lat: Number(loja.latitude), lng: Number(loja.longitude) } : null;
+    desenharFaixas(Array.isArray(loja.faixas_entrega) ? loja.faixas_entrega : []);
+    $("#lExigirLocal").checked = !!loja.exigir_localizacao;
+    desenharLocalLoja();
+    mostrarModoTaxa();
+    $("#lAuto").checked = !!loja.horario_automatico;
+    $("#blocoHorarios").classList.toggle("oculto", !loja.horario_automatico);
+    desenharHorarios(loja.horarios);
+    $("#resultadosEndereco").classList.add("oculto");
+
     const formas = FORMAS_PADRAO.concat((loja.formas_pagamento || []).filter(f => !FORMAS_PADRAO.includes(f)));
     $("#lFormas").innerHTML = "<legend>Formas de pagamento aceitas</legend>" + formas.map(f =>
       `<label><input type="checkbox" value="${esc(f)}" ${(loja.formas_pagamento || []).includes(f) ? "checked" : ""}> ${esc(f)}</label>`).join("");
@@ -1282,6 +1625,21 @@
     const tipos = [$("#lDelivery").checked, $("#lRetirada").checked, $("#lMesa").checked];
     if (!tipos.some(Boolean)) return erro("Marque pelo menos um tipo de pedido.");
 
+    const modo = modoTaxa();
+    let faixas = [];
+    if (modo === "distancia") {
+      if (!localLoja) return erro("Marque no mapa onde fica a loja para cobrar por distância.");
+      faixas = lerFaixas();
+      if (faixas.some(f => !Number.isFinite(f.ate_km) || f.ate_km <= 0 || f.ate_km > 100)) return erro("Confira os quilômetros das faixas (ex.: 3 ou 2,5).");
+      if (faixas.some(f => !Number.isFinite(f.valor) || f.valor < 0)) return erro("Confira os valores das faixas de distância.");
+      faixas.sort((a, b) => a.ate_km - b.ate_km);
+      if (faixas.some((f, i) => i && f.ate_km === faixas[i - 1].ate_km)) return erro("Há duas faixas com a mesma distância.");
+      faixas = faixas.map(f => ({ ate_km: Math.round(f.ate_km * 100) / 100, valor: Math.round(f.valor * 100) / 100 }));
+    }
+    let horarios = {};
+    try { horarios = lerHorarios(); } catch (e) { return erro(e.message); }
+    if ($("#lAuto").checked && !Object.keys(horarios).length) return erro("Marque pelo menos um dia de funcionamento.");
+
     const dados = {
       nome,
       logo_url: $("#lLogo").value.trim() || null,
@@ -1297,6 +1655,20 @@
       formas_pagamento: $$("#lFormas input:checked").map(i => i.value),
       mensagem_fechada: $("#lMsgFechada").value.trim() || null
     };
+    // Campos da Etapa 2 so vao se o banco ja tiver as colunas (script 08)
+    if ("modo_taxa" in loja) {
+      Object.assign(dados, {
+        modo_taxa: modo,
+        faixas_entrega: modo === "distancia" ? faixas : (Array.isArray(loja.faixas_entrega) ? loja.faixas_entrega : []),
+        latitude: localLoja ? localLoja.lat : null,
+        longitude: localLoja ? localLoja.lng : null,
+        exigir_localizacao: $("#lExigirLocal").checked,
+        horario_automatico: $("#lAuto").checked,
+        horarios
+      });
+    } else if (modo === "distancia" || $("#lAuto").checked) {
+      return erro("Falta rodar o script 08-etapa2.sql no Supabase para usar distância e horários.");
+    }
 
     await U.ocupado($("#btnSalvarLoja"), "Salvando…", async () => {
       try {
@@ -1306,6 +1678,7 @@
         montarCabecalho();
         marcarLoja(false);
         preencherLoja();
+        atualizarStatusLoja();
         U.toast("Dados da loja salvos");
       } catch (e) {
         erro(e.message);

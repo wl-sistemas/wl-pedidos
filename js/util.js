@@ -187,6 +187,94 @@
       return "Mesa " + (p.mesa || "");
     },
 
+    // ---------- Mapa e distancia (Etapa 2) ----------
+    // Carrega o Leaflet (mapa gratuito do OpenStreetMap) so quando precisa
+    carregarMapa() {
+      if (window.L && window.L.map) return Promise.resolve(window.L);
+      if (U._mapa) return U._mapa;
+      const base = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/";
+      U._mapa = new Promise((ok, falha) => {
+        const css = document.createElement("link");
+        css.rel = "stylesheet"; css.href = base + "leaflet.min.css";
+        document.head.appendChild(css);
+        const js = document.createElement("script");
+        js.src = base + "leaflet.min.js";
+        js.onload = () => ok(window.L);
+        js.onerror = () => { U._mapa = null; falha(new Error("Não foi possível abrir o mapa. Confira a internet.")); };
+        document.head.appendChild(js);
+      });
+      return U._mapa;
+    },
+    // Cria um mapa com alfinete arrastavel. aoMover(lat, lng) e chamado quando muda.
+    async criarMapa(elemento, lat, lng, zoom, aoMover) {
+      const L = await U.carregarMapa();
+      const mapa = L.map(elemento, { zoomControl: true, attributionControl: true }).setView([lat, lng], zoom || 15);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19, attribution: "© OpenStreetMap"
+      }).addTo(mapa);
+      const icone = L.divIcon({ className: "wl-alfinete", html: "<span></span>", iconSize: [30, 42], iconAnchor: [15, 40] });
+      const alfinete = L.marker([lat, lng], { draggable: true, icon: icone, keyboard: false }).addTo(mapa);
+      const mover = (la, ln, centralizar) => {
+        alfinete.setLatLng([la, ln]);
+        if (centralizar) mapa.setView([la, ln], Math.max(mapa.getZoom(), 16));
+        aoMover && aoMover(la, ln);
+      };
+      alfinete.on("dragend", () => { const c = alfinete.getLatLng(); mover(c.lat, c.lng); });
+      mapa.on("click", e => mover(e.latlng.lat, e.latlng.lng));
+      return { mapa, alfinete, mover, L };
+    },
+    // Localizacao do aparelho (GPS no celular, aproximada no computador)
+    minhaLocalizacao() {
+      return new Promise((ok, falha) => {
+        if (!navigator.geolocation) return falha(new Error("Este aparelho não informa a localização. Marque no mapa."));
+        navigator.geolocation.getCurrentPosition(
+          p => ok({ lat: p.coords.latitude, lng: p.coords.longitude, precisao: p.coords.accuracy }),
+          e => falha(new Error(e.code === 1
+            ? "Localização bloqueada. Permita o acesso à localização ou marque no mapa."
+            : "Não foi possível achar sua localização. Marque no mapa.")),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+      });
+    },
+    // Distancia em linha reta (km), mesma conta do banco
+    distanciaKm(lat1, lng1, lat2, lng2) {
+      const r = x => x * Math.PI / 180;
+      const a = Math.pow(Math.sin(r(lat2 - lat1) / 2), 2) +
+        Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.pow(Math.sin(r(lng2 - lng1) / 2), 2);
+      return Math.round(2 * 6371 * Math.asin(Math.min(1, Math.sqrt(a))) * 100) / 100;
+    },
+    // Valor da faixa para a distancia; null = fora da area
+    taxaPorDistancia(faixas, km) {
+      const lista = (Array.isArray(faixas) ? faixas : [])
+        .filter(f => Number.isFinite(Number(f.ate_km)) && Number.isFinite(Number(f.valor)))
+        .sort((a, b) => a.ate_km - b.ate_km);
+      const f = lista.find(x => km <= Number(x.ate_km));
+      return f ? Number(f.valor) : null;
+    },
+    km(v) {
+      return Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " km";
+    },
+    linkMapa(lat, lng) {
+      return "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lng;
+    },
+    // "hoje às 18:00", "amanhã às 18:00", "sexta às 18:00"
+    quando(iso, fuso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      const tz = fuso || "America/Sao_Paulo";
+      let dia, hoje, hora;
+      try {
+        dia = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
+        hoje = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+        hora = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, hour: "2-digit", minute: "2-digit" }).format(d);
+      } catch (e) {
+        dia = d.toISOString().slice(0, 10); hoje = new Date().toISOString().slice(0, 10); hora = U.hora(iso);
+      }
+      const dif = Math.round((Date.parse(dia) - Date.parse(hoje)) / 86400000);
+      const nomes = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+      const nome = dif === 0 ? "hoje" : dif === 1 ? "amanhã" : nomes[new Date(dia + "T12:00:00Z").getUTCDay()];
+      return nome + " às " + hora;
+    },
+
     resumoOpcoes(opcoes) {
       if (!Array.isArray(opcoes) || !opcoes.length) return "";
       const grupos = {};

@@ -39,6 +39,7 @@
       aceita_delivery: true, aceita_retirada: true, aceita_mesa: true,
       formas_pagamento: ["Pix", "Dinheiro", "Cartão"], fuso: "America/Sao_Paulo", criado_em: new Date().toISOString()
     };
+    Object.assign(loja, ETAPA2_PADRAO());
     db.lojas.push(loja);
     db.loja_membros.push({ loja_id: loja.id, user_id: "u-dono", papel: "dono", email: "dono@demo.com" });
 
@@ -72,7 +73,61 @@
     return db;
   }
 
-  function carregarDb() { return ler(CHAVE_DB) || semente(); }
+  // Campos novos da Etapa 2 (demonstracoes antigas guardadas no navegador ganham os padroes)
+  function ETAPA2_PADRAO() {
+    return { modo_taxa: "fixa", faixas_entrega: [], latitude: null, longitude: null, exigir_localizacao: false,
+             horario_automatico: false, horarios: {}, pausa_ate: null };
+  }
+  function carregarDb() {
+    const db = ler(CHAVE_DB) || semente();
+    db.lojas.forEach(l => { Object.entries(ETAPA2_PADRAO()).forEach(([k, v]) => { if (!(k in l)) l[k] = v; }); });
+    return db;
+  }
+
+  // ---------------- Horario automatico (mesma regra do banco) ----------------
+  // Trabalha com "hora de parede" da loja num Date em UTC, e converte de volta no fim.
+  function paredeAgora(fuso) {
+    const partes = {};
+    new Intl.DateTimeFormat("en-US", { timeZone: fuso || "America/Sao_Paulo", hourCycle: "h23",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      .formatToParts(new Date()).forEach(x => { partes[x.type] = x.value; });
+    return Date.UTC(+partes.year, +partes.month - 1, +partes.day, +partes.hour, +partes.minute, +partes.second);
+  }
+  function agenda(l) {
+    const agoraReal = Date.now();
+    const agora = paredeAgora(l.fuso);
+    const desvio = agora - agoraReal;
+    const pausa = l.pausa_ate ? Date.parse(l.pausa_ate) + desvio : null;
+    const ref = Math.max(agora, pausa || agora);
+    const hojeZero = agora - (agora % 864e5);
+    const ok = /^([01]\d|2[0-3]):[0-5]\d$/;
+    let dentro = false, fecha = null, abre = null;
+    for (let i = -1; i <= 8; i++) {
+      const dia = hojeZero + i * 864e5;
+      const dow = new Date(dia).getUTCDay();
+      const lista = Array.isArray((l.horarios || {})[dow]) ? l.horarios[dow] : [];
+      lista.forEach(f => {
+        if (!ok.test(f.abre || "") || !ok.test(f.fecha || "")) return;
+        const min = t => (+t.slice(0, 2) * 60 + +t.slice(3, 5)) * 60000;
+        const ini = dia + min(f.abre);
+        let fim = dia + min(f.fecha);
+        if (fim <= ini) fim += 864e5;
+        if (agora >= ini && agora < fim) { dentro = true; fecha = Math.max(fecha || fim, fim); }
+        if (ini > ref && (abre === null || ini < abre)) abre = ini;
+      });
+    }
+    const real = t => t === null ? null : new Date(t - desvio).toISOString();
+    return { dentro, fecha_em: real(fecha), abre_em: real(abre) };
+  }
+  function abertaAgora(l) {
+    if (!l.horario_automatico) return !!l.aberta;
+    return agenda(l).dentro && (!l.pausa_ate || Date.parse(l.pausa_ate) <= Date.now());
+  }
+  function textoFechada(l) {
+    if (l.mensagem_fechada && l.mensagem_fechada.trim()) return l.mensagem_fechada.trim();
+    const ab = l.horario_automatico ? agenda(l).abre_em : null;
+    return ab ? "A loja está fechada agora. Abrimos " + U.quando(ab, l.fuso) + "." : "A loja está fechada no momento.";
+  }
   function salvarDb(db) { gravar(CHAVE_DB, db); }
   const copia = o => JSON.parse(JSON.stringify(o));
   const espera = () => new Promise(r => setTimeout(r, 120));
@@ -132,7 +187,7 @@
     const l = db.lojas.find(x => x.slug === String(slug || "").trim().toLowerCase());
     if (!l || !l.ativa) throw new Error("Esta loja não está disponível no momento.");
     const manual = ped.origem === "Manual" && podeGerenciar(db, l.id);
-    if (!l.aberta && !manual) throw new Error(l.mensagem_fechada || "A loja está fechada no momento.");
+    if (!abertaAgora(l) && !manual) throw new Error(textoFechada(l));
 
     const nome = String(ped.cliente_nome || "").trim().slice(0, 80);
     const tel = String(ped.telefone || "").replace(/\D/g, "").slice(0, 15);
@@ -190,7 +245,22 @@
                preco_unitario: unit, quantidade: qtd, total: unit * qtd };
     });
 
-    const taxa = tipo === "Delivery" ? n(l.taxa_entrega) : 0;
+    let taxa = tipo === "Delivery" ? n(l.taxa_entrega) : 0;
+    let lat = Number(ped.latitude), lng = Number(ped.longitude), dist = null;
+    if (tipo !== "Delivery" || ped.latitude == null || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) { lat = null; lng = null; }
+    if (lat !== null && l.latitude != null) dist = U.distanciaKm(l.latitude, l.longitude, lat, lng);
+    if (tipo === "Delivery" && l.modo_taxa === "distancia" && l.latitude != null && l.faixas_entrega.length) {
+      if (dist === null) {
+        if (l.exigir_localizacao && !manual) throw new Error("Marque no mapa o local de entrega para calcular a taxa.");
+      } else {
+        const v = U.taxaPorDistancia(l.faixas_entrega, dist);
+        if (v === null) {
+          const raio = Math.max.apply(null, l.faixas_entrega.map(f => n(f.ate_km)));
+          if (!manual) throw new Error("Este endereço fica a " + String(Math.round(dist * 10) / 10).replace(".", ",") + " km da loja, fora da área de entrega (até " + String(raio).replace(".", ",") + " km).");
+          taxa = Math.max.apply(null, l.faixas_entrega.map(f => n(f.valor)));
+        } else taxa = v;
+      }
+    }
     if (!manual && subtotal < n(l.pedido_minimo)) throw new Error("O pedido mínimo desta loja é " + reais(l.pedido_minimo) + ".");
     const data = U.hojeNoFuso(l.fuso);
     const chave = l.id + "|" + data;
@@ -203,12 +273,12 @@
       subtotal, taxa_entrega: taxa, total: subtotal + taxa, status: "Recebido", motivo_cancelamento: null,
       origem: manual ? "Manual" : "Cliente",
       tracking_token: (crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g, () => (Math.random() * 16 | 0).toString(16))),
-      criado_em: agora, atualizado_em: agora
+      criado_em: agora, atualizado_em: agora, pago: false, distancia_km: dist, latitude: lat, longitude: lng
     };
     db.pedidos.push(pedido);
     calculados.forEach(i => db.itens_pedido.push(Object.assign({ id: ++db.seq, pedido_id: pedido.id, loja_id: l.id }, i)));
     gravar("wl_demo_ultimo_token", pedido.tracking_token);
-    return { numero: pedido.numero, tracking_token: pedido.tracking_token, subtotal, taxa_entrega: taxa, total: pedido.total };
+    return { numero: pedido.numero, tracking_token: pedido.tracking_token, subtotal, taxa_entrega: taxa, total: pedido.total, distancia_km: dist };
   }
 
   function cardapio(db, slug) {
@@ -229,7 +299,9 @@
         }))
       }));
     const loja = copia(l);
-    delete loja.id; delete loja.fuso; delete loja.criado_em;
+    const ag = agenda(l);
+    Object.assign(loja, { aberta: abertaAgora(l), abre_em: ag.abre_em, fecha_em: ag.fecha_em });
+    delete loja.id; delete loja.criado_em; delete loja.pausa_ate;
     return { loja, categorias: cats.map(c => ({ id: c.id, nome: c.nome })), produtos };
   }
 
@@ -297,6 +369,32 @@
       });
     },
     salvar_produto: (db, a) => salvarProduto(db, a.p_loja, a.p),
+    status_loja: (db, a) => {
+      if (!podeGerenciar(db, a.p_loja)) throw new Error("Sem permissão para esta loja.");
+      const l = db.lojas.find(x => x.id === a.p_loja);
+      const ag = agenda(l);
+      return { aberta: abertaAgora(l), automatico: !!l.horario_automatico, dentro_do_horario: ag.dentro,
+               pausada: !!(l.horario_automatico && l.pausa_ate && Date.parse(l.pausa_ate) > Date.now()),
+               fecha_em: ag.fecha_em, abre_em: ag.abre_em };
+    },
+    pausar_loja: (db, a) => {
+      if (!podeGerenciar(db, a.p_loja)) throw new Error("Sem permissão para esta loja.");
+      const l = db.lojas.find(x => x.id === a.p_loja);
+      if (a.p_pausar) { l.pausa_ate = null; l.pausa_ate = agenda(l).fecha_em || new Date(Date.now() + 12 * 36e5).toISOString(); }
+      else l.pausa_ate = null;
+      return RPC.status_loja(db, a);
+    },
+    historico_pedidos: (db, a) => {
+      if (!podeGerenciar(db, a.p_loja)) return [];
+      const de = a.p_de || a.p_ate, ate = a.p_ate || a.p_de;
+      const busca = String(a.p_busca || "").trim();
+      const dig = busca.replace(/\D/g, "");
+      return db.pedidos.filter(p => p.loja_id === a.p_loja && p.data_ref >= de && p.data_ref <= ate && (!busca ||
+          p.cliente_nome.toLowerCase().includes(busca.toLowerCase()) ||
+          (dig.length >= 3 && String(p.telefone || "").includes(dig)) ||
+          (/^#?\d{1,5}$/.test(busca) && p.numero === Number(busca.replace("#", "")))))
+        .sort((x, y) => y.criado_em.localeCompare(x.criado_em)).slice(0, 300);
+    },
     master_listar_lojas: db => {
       if (!RPC.is_super_admin()) throw new Error("Acesso restrito à WL Sistemas.");
       const desde = Date.now() - 30 * 864e5;

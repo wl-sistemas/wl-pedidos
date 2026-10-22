@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400..800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/base.css?v=20261022">
-  <link rel="stylesheet" href="css/cardapio.css?v=20261022">
+  <link rel="stylesheet" href="css/base.css?v=20261022b">
+  <link rel="stylesheet" href="css/cardapio.css?v=20261022b">
 </head>
 <body>
   <div id="carregando" class="carregando"><div class="girando"></div><span>Abrindo o cardápio…</span></div>
@@ -116,8 +116,22 @@
             <input id="cNome" autocomplete="name" maxlength="80" required></label>
           <label class="campo" id="campoTelefone"><span>WhatsApp com DDD</span>
             <input id="cTelefone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(43) 99999-9999"></label>
-          <label class="campo" id="campoEndereco"><span>Endereço de entrega</span>
-            <textarea id="cEndereco" maxlength="200" autocomplete="street-address" placeholder="Rua, número, bairro e ponto de referência"></textarea></label>
+          <div id="campoEndereco">
+            <label class="campo"><span>Endereço de entrega</span>
+              <textarea id="cEndereco" maxlength="200" autocomplete="street-address" placeholder="Rua, número, bairro e ponto de referência"></textarea></label>
+
+            <div id="blocoLocal" class="bloco-local oculto">
+              <p class="local-titulo">Local de entrega no mapa</p>
+              <p id="localTexto" class="local-texto">A taxa de entrega depende da distância. Mostre onde vamos entregar.</p>
+              <div class="local-botoes">
+                <button id="btnMinhaLocal" class="btn btn-cor btn-p" type="button">📍 Usar minha localização</button>
+                <button id="btnMarcarMapa" class="btn btn-p" type="button">Marcar no mapa</button>
+              </div>
+              <div id="mapaCliente" class="mapa oculto" aria-label="Mapa para marcar o local de entrega"></div>
+              <p id="localDica" class="local-dica oculto">Confira se o alfinete está no lugar certo. Toque no mapa ou arraste o alfinete para ajustar.</p>
+              <p id="localResultado" class="local-resultado oculto" role="status"></p>
+            </div>
+          </div>
           <label class="campo" id="campoMesa"><span>Mesa ou comanda</span>
             <input id="cMesa" maxlength="20" inputmode="numeric"></label>
 
@@ -157,10 +171,10 @@
     </div>
   </div>
 
-  <script src="config.js?v=20261022"></script>
-  <script src="js/util.js?v=20261022"></script>
-  <script src="js/api.js?v=20261022"></script>
-  <script src="js/demo.js?v=20261022"></script>
-  <script src="js/cardapio.js?v=20261022"></script>
+  <script src="config.js?v=20261022b"></script>
+  <script src="js/util.js?v=20261022b"></script>
+  <script src="js/api.js?v=20261022b"></script>
+  <script src="js/demo.js?v=20261022b"></script>
+  <script src="js/cardapio.js?v=20261022b"></script>
 </body>
 </html>
