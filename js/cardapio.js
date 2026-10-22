@@ -150,6 +150,7 @@
       </section>`).join("");
 
     $$(".produto").forEach(b => b.addEventListener("click", () => abrirProduto(Number(b.dataset.id))));
+    prepararBusca(visiveis.length > 1 || produtos.length > 6);
 
     // Destaca a categoria visivel no menu
     if ("IntersectionObserver" in window && visiveis.length > 1) {
@@ -168,12 +169,50 @@
     }
   }
 
+  // ------------------------------------------------------------------
+  // Busca no cardapio (ignora acentos e maiusculas)
+  // ------------------------------------------------------------------
+  function normalizar(t) {
+    return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function prepararBusca(mostrar) {
+    $("#buscaCaixa").classList.toggle("oculto", !mostrar);
+    if (!mostrar) return;
+    const campo = $("#buscaTexto");
+    campo.oninput = () => filtrarCardapio(campo.value);
+    campo.onkeydown = e => { if (e.key === "Enter") campo.blur(); if (e.key === "Escape") { campo.value = ""; filtrarCardapio(""); } };
+    $("#buscaLimpar").onclick = () => { campo.value = ""; filtrarCardapio(""); campo.focus(); };
+  }
+
+  function filtrarCardapio(texto) {
+    const termos = normalizar(texto).split(" ").filter(Boolean);
+    $("#buscaLimpar").classList.toggle("oculto", !termos.length);
+    let achados = 0;
+    $$(".secao").forEach(sec => {
+      let naSecao = 0;
+      sec.querySelectorAll(".produto").forEach(b => {
+        const ok = termos.every(t => b.dataset.busca.includes(t));
+        b.classList.toggle("oculto", !ok);
+        if (ok) naSecao++;
+      });
+      sec.classList.toggle("oculto", !naSecao);
+      sec.classList.toggle("secao-filtrada", termos.length > 0);
+      const link = $('#categoriasNav a[href="#' + sec.id + '"]');
+      if (link) link.classList.toggle("oculto", !naSecao);
+      achados += naSecao;
+    });
+    const vazio = $("#buscaVazia");
+    vazio.textContent = 'Nada encontrado para "' + texto.trim() + '". Tente outra palavra.';
+    vazio.classList.toggle("oculto", !termos.length || achados > 0);
+  }
+
   function cartaoProduto(p) {
     const preco = p.tamanhos.length
       ? "<small>a partir de</small> " + moeda(precoMinimo(p))
       : moeda(p.preco);
     return `
-      <button class="produto" type="button" data-id="${p.id}" ${p.disponivel ? "" : "disabled"}>
+      <button class="produto" type="button" data-id="${p.id}" data-busca="${esc(normalizar(p.nome + " " + (p.descricao || "")))}" ${p.disponivel ? "" : "disabled"}>
         <span class="produto-texto">
           <strong>${esc(p.nome)}</strong>
           ${p.descricao ? `<p>${esc(p.descricao)}</p>` : ""}

@@ -46,7 +46,7 @@
 
     $("#carregando").classList.add("oculto");
     $("#app").classList.remove("oculto");
-    cicloPedidos();
+    iniciarCiclo();
   }
 
   function urlCardapio() {
@@ -105,28 +105,20 @@
   let primeiraCarga = true;
   let filtro = "andamento";
   let naoVistos = 0;
-  let audio = null;
-  let somLigado = false;
   let cancelandoId = null;
+  let buscando = false;
 
   function prepararPedidos() {
     $$('input[name="filtro"]').forEach(r => r.addEventListener("change", () => { filtro = r.value; desenharPedidos(); }));
 
-    $("#btnSom").onclick = () => {
-      somLigado = !somLigado;
-      if (somLigado) {
-        try {
-          audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-          audio.resume();
-          bip();
-        } catch (e) { somLigado = false; U.toast("Este navegador não permite som.", "erro"); }
-      }
-      $("#btnSom").textContent = somLigado ? "Som ligado" : "Ativar som";
-      $("#btnSom").setAttribute("aria-pressed", String(somLigado));
-    };
+    Alarme.preparar();
 
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) { naoVistos = 0; document.title = loja.nome + " | Painel"; }
+      if (!document.hidden) {
+        naoVistos = 0;
+        Alarme.atualizarTitulo();
+        cicloPedidos(); // ao voltar para a aba, busca na hora
+      }
     });
 
     $("#listaPedidos").addEventListener("click", aoClicarPedido);
@@ -135,7 +127,37 @@
     $$("[data-fechar-modal]").forEach(b => b.addEventListener("click", () => b.closest("dialog").close()));
   }
 
+  // Relogio em Web Worker: o navegador quase nao atrasa timers de worker
+  // quando a aba esta em segundo plano (o setTimeout normal fica preso).
+  const Relogio = (function () {
+    const ouvintes = [];
+    let worker = null;
+    function iniciar() {
+      try {
+        const codigo = "setInterval(function(){postMessage(0)},1000);";
+        worker = new Worker(URL.createObjectURL(new Blob([codigo], { type: "text/javascript" })));
+        worker.onmessage = () => ouvintes.forEach(f => f());
+      } catch (e) {
+        worker = null;
+        setInterval(() => ouvintes.forEach(f => f()), 1000);
+      }
+    }
+    return { iniciar, cadaSegundo: f => ouvintes.push(f) };
+  })();
+
+  let segundos = 0;
+  function iniciarCiclo() {
+    Relogio.cadaSegundo(() => {
+      segundos++;
+      if (segundos % (INTERVALO / 1000) === 0) cicloPedidos();
+    });
+    Relogio.iniciar();
+    cicloPedidos();
+  }
+
   async function cicloPedidos() {
+    if (buscando) return;
+    buscando = true;
     try {
       await carregarPedidos();
       $("#statusConexao").textContent = "";
@@ -144,8 +166,9 @@
       if (!WL.logado()) { location.href = "login.html"; return; }
       $("#statusConexao").textContent = "Sem conexão com o servidor. Tentando de novo…";
       $("#statusConexao").classList.add("erro");
+    } finally {
+      buscando = false;
     }
-    setTimeout(cicloPedidos, INTERVALO);
   }
 
   async function carregarPedidos() {
@@ -165,45 +188,294 @@
       itens.forEach(it => itensPorPedido[it.pedido_id].push(it));
     }
 
-    let novos = 0;
+    const novos = [];
     a.forEach(p => {
       if (!conhecidos.has(p.id)) {
-        if (!primeiraCarga && p.origem === "Cliente") novos++;
+        if (!primeiraCarga && p.origem === "Cliente") novos.push(p);
         conhecidos.add(p.id);
       }
     });
     primeiraCarga = false;
-    if (novos) avisarNovos(novos);
+    if (novos.length) avisarNovos(novos);
+    Alarme.conferir(a);
 
     desenharResumo();
     desenharPedidos();
   }
 
-  function avisarNovos(n) {
-    U.toast(n === 1 ? "Novo pedido chegou!" : n + " novos pedidos chegaram!");
-    if (somLigado) bip();
-    if (document.hidden) {
-      naoVistos += n;
-      document.title = "(" + naoVistos + ") Novo pedido! | " + loja.nome;
-    }
+  function avisarNovos(lista) {
+    const n = lista.length;
+    U.toast(n === 1 ? "Novo pedido #" + lista[0].numero + " chegou!" : n + " novos pedidos chegaram!");
+    if (document.hidden) naoVistos += n;
+    Alarme.notificar(lista);
   }
 
-  function bip() {
-    if (!audio) return;
-    const agora = audio.currentTime;
-    [0, 0.22, 0.44].forEach((t, i) => {
-      const o = audio.createOscillator();
-      const g = audio.createGain();
-      o.type = "sine";
-      o.frequency.value = i === 2 ? 1175 : 880;
-      g.gain.setValueAtTime(0.0001, agora + t);
-      g.gain.exponentialRampToValueAtTime(0.35, agora + t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, agora + t + 0.18);
-      o.connect(g).connect(audio.destination);
-      o.start(agora + t);
-      o.stop(agora + t + 0.2);
+  // ==================================================================
+  // ALARME DE PEDIDO NOVO
+  // Toca alto e repete ate alguem ver o pedido. Funciona com a aba em
+  // segundo plano, mostra aviso do sistema e mantem a tela ligada.
+  // ==================================================================
+  const Alarme = (function () {
+    const TOQUES = {
+      campainha: { nome: "Campainha", duracao: 2.6 },
+      sirene: { nome: "Sirene", duracao: 2.4 },
+      bipe: { nome: "Bipe forte", duracao: 1.6 }
+    };
+    let ctx = null, saida = null;
+    let pendentes = [];          // pedidos de cliente ainda nao vistos
+    let tocandoAte = 0;          // evita sobrepor toques
+    let piscar = false;
+    let travaTela = null;
+
+    const cfg = () => ({
+      ligado: U.lerLocal("wl_som", true) !== false,
+      volume: Math.min(1, Math.max(0.1, Number(U.lerLocal("wl_volume", 1)) || 1)),
+      toque: TOQUES[U.lerLocal("wl_toque", "campainha")] ? U.lerLocal("wl_toque", "campainha") : "campainha",
+      tela: U.lerLocal("wl_tela_ligada", true) !== false
     });
-  }
+
+    const chaveVistos = () => "wl_vistos_" + lojaId;
+    function vistos() { return new Set(U.lerLocal(chaveVistos(), [])); }
+    function marcarVistos(ids) {
+      const v = [...vistos(), ...ids];
+      U.gravarLocal(chaveVistos(), [...new Set(v)].slice(-300));
+    }
+
+    function somPronto() { return !!ctx && ctx.state === "running"; }
+
+    function criarAudio() {
+      try {
+        if (!ctx) {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const comp = ctx.createDynamicsCompressor();
+          comp.threshold.value = -14; comp.knee.value = 6; comp.ratio.value = 8;
+          comp.attack.value = 0.003; comp.release.value = 0.15;
+          saida = ctx.createGain();
+          saida.connect(comp).connect(ctx.destination);
+        }
+        desenharEstado();
+        if (ctx.state === "running") return Promise.resolve(true);
+        return ctx.resume().then(() => { desenharEstado(); return somPronto(); }, () => false);
+      } catch (e) { ctx = null; desenharEstado(); return Promise.resolve(false); }
+    }
+
+    // Liga o audio (precisa vir de um clique) e toca o toque escolhido
+    function testar() {
+      tocandoAte = 0;
+      return criarAudio().then(ok => {
+        if (!ok || !tocar(true)) U.toast("O navegador bloqueou o som. Clique de novo.", "erro");
+      });
+    }
+
+    // Um tom com envelope curto; onda quadrada filtrada soa bem mais alto que a senoidal
+    function tom(freq, inicio, dur, forma, freqFim) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      const f = ctx.createBiquadFilter();
+      f.type = "lowpass"; f.frequency.value = 4200;
+      o.type = forma || "square";
+      o.frequency.setValueAtTime(freq, inicio);
+      if (freqFim) o.frequency.linearRampToValueAtTime(freqFim, inicio + dur);
+      g.gain.setValueAtTime(0.0001, inicio);
+      g.gain.exponentialRampToValueAtTime(1, inicio + 0.012);
+      g.gain.setValueAtTime(1, inicio + dur - 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, inicio + dur);
+      o.connect(f).connect(g).connect(saida);
+      o.start(inicio);
+      o.stop(inicio + dur + 0.02);
+    }
+
+    function tocar(forcar) {
+      if (!somPronto()) return false;
+      const c = cfg();
+      if (!c.ligado && !forcar) return false;
+      const agora = ctx.currentTime;
+      if (agora < tocandoAte) return true;
+      saida.gain.setValueAtTime(0.55 * c.volume, agora);
+      const t0 = agora + 0.03;
+      if (c.toque === "campainha") {
+        // trrrim... trrrim (dois tons alternando bem rapido)
+        [0, 1.3].forEach(base => {
+          for (let i = 0; i < 12; i++) tom(i % 2 ? 1318 : 1046, t0 + base + i * 0.075, 0.07);
+        });
+      } else if (c.toque === "sirene") {
+        [0, 0.8, 1.6].forEach(base => { tom(700, t0 + base, 0.38, "sawtooth", 1500); tom(1500, t0 + base + 0.38, 0.38, "sawtooth", 700); });
+      } else {
+        [0, 0.3, 0.6, 1.0, 1.3].forEach((t, i) => tom(i === 2 || i === 4 ? 1568 : 1175, t0 + t, 0.22));
+      }
+      tocandoAte = agora + TOQUES[c.toque].duracao;
+      return true;
+    }
+
+    // Chamado a cada busca de pedidos
+    function conferir(emAndamento) {
+      const v = vistos();
+      pendentes = emAndamento.filter(p => p.origem === "Cliente" && p.status === "Recebido" && !v.has(p.id));
+      desenharFaixa();
+      atualizarTitulo();
+    }
+
+    function reconhecer(ids) {
+      const lista = ids || pendentes.map(p => p.id);
+      if (!lista.length) return;
+      marcarVistos(lista);
+      pendentes = pendentes.filter(p => !lista.includes(p.id));
+      desenharFaixa();
+      atualizarTitulo();
+    }
+
+    // A cada segundo: repete o toque e pisca o titulo enquanto houver pedido nao visto
+    let contador = 0;
+    function aCadaSegundo() {
+      contador++;
+      if (!pendentes.length) return;
+      piscar = !piscar;
+      atualizarTitulo();
+      if (contador % 4 === 0 || ctx && ctx.currentTime >= tocandoAte + 1.2) tocar();
+    }
+
+    function atualizarTitulo() {
+      if (pendentes.length) {
+        document.title = (piscar ? "🔔 " : "🟢 ") + (pendentes.length === 1 ? "NOVO PEDIDO" : pendentes.length + " NOVOS PEDIDOS") + " | " + loja.nome;
+      } else if (document.hidden && naoVistos) {
+        document.title = "(" + naoVistos + ") Novo pedido! | " + loja.nome;
+      } else {
+        document.title = loja.nome + " | Painel";
+      }
+    }
+
+    function notificar(lista) {
+      if (!cfg().ligado) return;
+      tocar();
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      try {
+        const p = lista[0];
+        const n = new Notification(lista.length === 1 ? "Novo pedido #" + p.numero : lista.length + " novos pedidos", {
+          body: lista.length === 1
+            ? p.cliente_nome + " · " + U.rotuloTipo(p) + " · " + moeda(p.total)
+            : "Abra o painel para ver os pedidos.",
+          tag: "wl-pedido-" + p.id,
+          requireInteraction: true,
+          icon: loja.logo_url || undefined
+        });
+        n.onclick = () => { window.focus(); irParaPedidos(); n.close(); };
+      } catch (e) { /* alguns navegadores so permitem pelo service worker */ }
+    }
+
+    function irParaPedidos() {
+      const aba = $('.abas [data-aba="pedidos"]');
+      if (aba.getAttribute("aria-selected") !== "true") aba.click();
+      const r = $('input[name="filtro"][value="andamento"]');
+      if (!r.checked) { r.checked = true; filtro = "andamento"; desenharPedidos(); }
+      const alvo = pendentes[0] && $('.pedido[data-id="' + pendentes[0].id + '"]');
+      if (alvo) alvo.scrollIntoView({ behavior: "smooth", block: "center" });
+      reconhecer();
+      desenharPedidos();
+    }
+
+    async function pedirNotificacao() {
+      if (!("Notification" in window)) { U.toast("Este navegador não mostra avisos do sistema.", "erro"); return; }
+      try { await Notification.requestPermission(); } catch (e) { /* ignora */ }
+      desenharEstado();
+      if (Notification.permission === "granted") {
+        try { new Notification("Avisos ligados", { body: "Você será avisado aqui quando chegar pedido novo." }); } catch (e) { /* ignora */ }
+      } else if (Notification.permission === "denied") {
+        U.toast("Avisos bloqueados. Clique no cadeado ao lado do endereço do site para liberar.", "erro");
+      }
+    }
+
+    async function manterTela() {
+      if (!cfg().tela || !("wakeLock" in navigator) || document.hidden || travaTela) return;
+      try {
+        travaTela = await navigator.wakeLock.request("screen");
+        travaTela.addEventListener("release", () => { travaTela = null; });
+      } catch (e) { travaTela = null; }
+    }
+
+    function desenharFaixa() {
+      const faixa = $("#faixaAlarme");
+      marcarFaixas();
+      if (!pendentes.length) { faixa.classList.add("oculto"); marcarFaixas(); return; }
+      const nums = pendentes.map(p => "#" + p.numero).join(", ");
+      $("#faixaAlarmeTexto").textContent = (pendentes.length === 1 ? "Novo pedido " : "Novos pedidos ") + nums;
+      faixa.classList.remove("oculto");
+      marcarFaixas();
+    }
+
+    function marcarFaixas() {
+      document.body.classList.toggle("com-faixa", !$("#faixaAlarme").classList.contains("oculto") || !$("#faixaSom").classList.contains("oculto"));
+    }
+
+    function desenharEstado() {
+      const c = cfg();
+      const botao = $("#btnSom");
+      const pronto = somPronto();
+      botao.textContent = !c.ligado ? "🔕 Som desligado" : pronto ? "🔔 Som ligado" : "🔔 Ativar som";
+      botao.setAttribute("aria-pressed", String(c.ligado && pronto));
+      botao.classList.toggle("som-atencao", c.ligado && !pronto);
+      $("#faixaSom").classList.toggle("oculto", !c.ligado || pronto);
+      marcarFaixas();
+
+      // Aba Loja
+      const notif = !("Notification" in window) ? "indisponivel" : Notification.permission;
+      const st = $("#estadoNotificacao");
+      if (st) {
+        st.textContent = { granted: "Ligados", denied: "Bloqueados no navegador", default: "Ainda não permitidos", indisponivel: "Não disponível neste navegador" }[notif];
+        st.className = "estado " + (notif === "granted" ? "estado-ok" : "estado-alerta");
+        $("#btnNotificacao").classList.toggle("oculto", notif !== "default");
+        $("#ajudaNotificacao").classList.toggle("oculto", notif !== "denied");
+      }
+    }
+
+    function preparar() {
+      // Qualquer clique na pagina libera o som (regra dos navegadores)
+      let prontoAntes = false; // estado do som antes deste clique
+      const liberar = e => {
+        prontoAntes = somPronto();
+        manterTela();
+        // os botoes de som cuidam disso no proprio clique (e tocam o teste)
+        if (e.target.closest && e.target.closest("#faixaSom, #btnSom, #cartaoAvisos")) return;
+        if (cfg().ligado) criarAudio();
+      };
+      document.addEventListener("pointerdown", liberar, true);
+      document.addEventListener("keydown", liberar, true);
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) manterTela(); });
+
+      $("#btnSom").onclick = () => {
+        const ligar = !(cfg().ligado && prontoAntes);
+        U.gravarLocal("wl_som", ligar);
+        if (ligar) { testar(); U.toast("Som dos pedidos ligado"); }
+        else U.toast("Som dos pedidos desligado");
+        desenharEstado();
+      };
+      $("#btnFaixaSom").onclick = testar;
+      $("#btnVerAlarme").onclick = irParaPedidos;
+      $("#btnSilenciar").onclick = () => { reconhecer(); desenharPedidos(); U.toast("Alarme silenciado"); };
+
+      // Configuracoes na aba Loja
+      const c = cfg();
+      $("#somVolume").value = Math.round(c.volume * 100);
+      $("#somToque").innerHTML = Object.entries(TOQUES).map(([k, t]) => `<option value="${k}">${t.nome}</option>`).join("");
+      $("#somToque").value = c.toque;
+      $("#somTela").checked = c.tela;
+      $("#somVolume").oninput = () => { U.gravarLocal("wl_volume", Number($("#somVolume").value) / 100); };
+      $("#somVolume").onchange = testar;
+      $("#somToque").onchange = () => { U.gravarLocal("wl_toque", $("#somToque").value); testar(); };
+      $("#somTela").onchange = () => {
+        U.gravarLocal("wl_tela_ligada", $("#somTela").checked);
+        if ($("#somTela").checked) manterTela();
+        else if (travaTela) { travaTela.release(); travaTela = null; }
+      };
+      $("#btnTestarSom").onclick = testar;
+      $("#btnNotificacao").onclick = pedirNotificacao;
+
+      Relogio.cadaSegundo(aCadaSegundo);
+      desenharEstado();
+    }
+
+    const pendente = id => pendentes.some(p => p.id === id);
+    return { preparar, conferir, reconhecer, notificar, atualizarTitulo, desenharEstado, pendente };
+  })();
 
   function desenharResumo() {
     const validos = doDia.filter(p => p.status !== "Cancelado");
@@ -211,6 +483,8 @@
     $("#resPedidos").textContent = validos.length + (validos.length === 1 ? " pedido" : " pedidos");
     $("#resVendas").textContent = moeda(total);
     $("#resTicket").textContent = validos.length ? ". Ticket médio " + moeda(total / validos.length) : "";
+    const aReceber = validos.filter(p => !p.pago).reduce((s, p) => s + Number(p.total), 0);
+    $("#resReceber").textContent = aReceber > 0 ? "A receber: " + moeda(aReceber) : "";
 
     const fin = doDia.filter(p => p.status === "Finalizado").length;
     const can = doDia.filter(p => p.status === "Cancelado").length;
@@ -262,7 +536,7 @@
     const classeTipo = p.tipo_atendimento === "Delivery" ? "tipo-entrega" : p.tipo_atendimento === "Mesa" ? "tipo-mesa" : "tipo-retirada";
 
     return `
-      <article class="comanda pedido ${p.status === "Recebido" ? "pedido-novo" : ""} ${p.status === "Cancelado" ? "pedido-cancelado" : ""}" data-id="${p.id}">
+      <article class="comanda pedido ${p.status === "Recebido" ? "pedido-novo" : ""} ${Alarme.pendente(p.id) ? "pedido-alarme" : ""} ${p.status === "Cancelado" ? "pedido-cancelado" : ""}" data-id="${p.id}">
         <header class="pedido-topo">
           <span class="comanda-numero pedido-numero">#${p.numero}</span>
           <span class="tipo ${classeTipo}">${esc(U.rotuloTipo(p))}</span>
@@ -287,6 +561,8 @@
           ${Number(p.taxa_entrega) > 0 ? `<span>Entrega ${moeda(p.taxa_entrega)}</span>` : ""}
           <strong>Total ${moeda(p.total)}</strong>
           <span>${esc(p.pagamento || "Pagamento não informado")}${p.troco_para ? ", troco para " + moeda(p.troco_para) : ""}</span>
+          ${p.status !== "Cancelado" ? `<button type="button" class="pago-btn ${p.pago ? "pago-sim" : ""}" data-acao="pago" aria-pressed="${p.pago ? "true" : "false"}"
+            title="${p.pago ? "Marcar como não pago" : "Marcar como pago"}">${p.pago ? "✓ Pago" : "A receber"}</button>` : ""}
         </div>
 
         ${p.status === "Cancelado" ? `
@@ -313,6 +589,11 @@
   }
 
   async function aoClicarPedido(e) {
+    const cartao = e.target.closest("[data-id]");
+    if (cartao && Alarme.pendente(Number(cartao.dataset.id))) {
+      Alarme.reconhecer([Number(cartao.dataset.id)]);
+      cartao.classList.remove("pedido-alarme");
+    }
     const botao = e.target.closest("[data-acao]");
     if (!botao) return;
     const id = Number(botao.closest("[data-id]").dataset.id);
@@ -322,6 +603,8 @@
 
     if (acao === "avancar") {
       await U.ocupado(botao, "Salvando…", () => mudarStatus(p, botao.dataset.status));
+    } else if (acao === "pago") {
+      await U.ocupado(botao, "…", () => marcarPago(p, !p.pago));
     } else if (acao === "imprimir") {
       imprimir(p);
     } else if (acao === "whatsapp") {
@@ -359,6 +642,20 @@
       U.toast("Pedido #" + p.numero + ": " + status);
     } catch (e) {
       U.toast(e.message, "erro");
+    }
+  }
+
+  async function marcarPago(p, pago) {
+    try {
+      const r = await WL.atualizar("pedidos", { id: "eq." + p.id }, { pago });
+      if (!r.length) throw new Error("Não foi possível atualizar o pagamento.");
+      [andamento.find(x => x.id === p.id), doDia.find(x => x.id === p.id), p].forEach(x => { if (x) x.pago = r[0].pago; });
+      desenharResumo();
+      desenharPedidos();
+      U.toast("Pedido #" + p.numero + (pago ? ": pago" : ": a receber"));
+    } catch (e) {
+      const msg = /pago/.test(e.message) ? "Falta rodar o script 07-pagamento.sql no Supabase." : e.message;
+      U.toast(msg, "erro");
     }
   }
 
@@ -440,7 +737,8 @@
       <p class="cupom-item"><span>Subtotal</span><span>${moeda(p.subtotal)}</span></p>
       ${Number(p.taxa_entrega) > 0 ? `<p class="cupom-item"><span>Entrega</span><span>${moeda(p.taxa_entrega)}</span></p>` : ""}
       <p class="cupom-item cupom-total"><span>TOTAL</span><span>${moeda(p.total)}</span></p>
-      <p>Pagamento: ${esc(p.pagamento || "-")}${p.troco_para ? " (troco para " + moeda(p.troco_para) + ")" : ""}</p>`);
+      <p>Pagamento: ${esc(p.pagamento || "-")}${p.troco_para ? " (troco para " + moeda(p.troco_para) + ")" : ""}</p>
+      <p class="cupom-tipo">${p.pago ? "JÁ PAGO" : "A RECEBER " + moeda(p.total)}</p>`);
   }
 
   function imprimirTeste() {
@@ -906,6 +1204,8 @@
   // ==================================================================
   // DADOS DA LOJA
   // ==================================================================
+  let lojaAlterada = false;
+
   function prepararLoja() {
     $("#btnCopiarLink").onclick = () => U.copiar(urlCardapio());
     $("#papelLargura").value = papelAtual();
@@ -914,8 +1214,24 @@
       U.toast("Papel " + $("#papelLargura").value + " mm salvo neste computador");
     };
     $("#btnTesteImpressao").onclick = imprimirTeste;
-    $("#formLoja").addEventListener("submit", e => { e.preventDefault(); salvarLoja(); });
+    const form = $("#formLoja");
+    form.addEventListener("submit", e => { e.preventDefault(); salvarLoja(); });
     prepararImagem("#lLogoArquivo", "#lLogo", "#lLogoPrevia", "#lLogoRemover");
+    const marcar = () => marcarLoja(true);
+    form.addEventListener("input", marcar);
+    form.addEventListener("change", marcar);
+    // o upload/remocao da logo altera o campo por codigo
+    ["#lLogoRemover"].forEach(sel => $(sel).addEventListener("click", marcar));
+    $("#lCor").addEventListener("input", () => { $("#lCorTexto").textContent = $("#lCor").value.toUpperCase(); });
+    $("#btnDesfazerLoja").onclick = () => { marcarLoja(false); preencherLoja(); U.toast("Alterações desfeitas"); };
+    window.addEventListener("beforeunload", e => { if (lojaAlterada) { e.preventDefault(); e.returnValue = ""; } });
+  }
+
+  function marcarLoja(alterada) {
+    lojaAlterada = alterada;
+    $("#barraSalvar").classList.toggle("alterada", alterada);
+    $("#estadoLoja").textContent = alterada ? "Você tem alterações não salvas" : "Tudo salvo";
+    $("#btnDesfazerLoja").classList.toggle("oculto", !alterada);
   }
 
   function preencherLoja() {
@@ -926,11 +1242,15 @@
     $("#btnBaixarQR").classList.toggle("oculto", !!WL.demo);
     if (!WL.demo) $("#imgQR").src = "https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=8&data=" + encodeURIComponent(url);
     $("#btnBaixarQR").href = "https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&margin=20&format=png&data=" + encodeURIComponent(url);
+    Alarme.desenharEstado();
+
+    if (lojaAlterada) return; // nao apaga o que a pessoa esta editando
 
     $("#lNome").value = loja.nome;
     $("#lLogo").value = loja.logo_url || "";
     $("#lLogo").dispatchEvent(new Event("input"));
     $("#lCor").value = loja.cor_primaria;
+    $("#lCorTexto").textContent = String(loja.cor_primaria || "").toUpperCase();
     $("#lWhats").value = loja.whatsapp ? U.telefoneBonito(loja.whatsapp) : "";
     $("#lPix").value = loja.chave_pix || "";
     $("#lEndereco").value = loja.endereco || "";
@@ -942,9 +1262,10 @@
     $("#lMsgFechada").value = loja.mensagem_fechada || "";
 
     const formas = FORMAS_PADRAO.concat((loja.formas_pagamento || []).filter(f => !FORMAS_PADRAO.includes(f)));
-    $("#lFormas").innerHTML = "<legend>Formas de pagamento</legend>" + formas.map(f =>
+    $("#lFormas").innerHTML = "<legend>Formas de pagamento aceitas</legend>" + formas.map(f =>
       `<label><input type="checkbox" value="${esc(f)}" ${(loja.formas_pagamento || []).includes(f) ? "checked" : ""}> ${esc(f)}</label>`).join("");
     $("#erroLoja").classList.add("oculto");
+    marcarLoja(false);
   }
 
   async function salvarLoja() {
@@ -983,6 +1304,8 @@
         if (!r.length) throw new Error("Sem permissão para alterar a loja.");
         loja = r[0];
         montarCabecalho();
+        marcarLoja(false);
+        preencherLoja();
         U.toast("Dados da loja salvos");
       } catch (e) {
         erro(e.message);

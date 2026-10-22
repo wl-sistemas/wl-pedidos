@@ -28,6 +28,17 @@ body { padding-bottom: 96px; }
 .loja-infos li strong { color: var(--tinta); font-weight: 600; }
 .aviso-fechada { margin: 12px var(--lateral) 0; }
 
+/* ---------- Busca ---------- */
+.busca { position: relative; margin: 14px var(--lateral) 0; }
+.busca svg { position: absolute; width: 20px; height: 20px; left: 14px; top: 50%; transform: translateY(-50%); color: var(--suave); pointer-events: none; }
+.busca input { width: 100%; border: 1px solid var(--linha); background: var(--papel); min-height: 48px; padding-left: 44px; padding-right: 44px; border-radius: 999px; font-size: 16px; -webkit-appearance: none; appearance: none; }
+.busca input::-webkit-search-cancel-button { display: none; }
+.busca-limpar { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--fundo); color: var(--suave); cursor: pointer; }
+.busca-limpar svg { position: static; transform: none; width: 14px; height: 14px; }
+.secao .produto.oculto { display: none !important; }
+/* Durante a busca, as bordas seguem o que esta visivel */
+.secao-filtrada .produto { border-bottom: 1px solid var(--linha); }
+
 /* ---------- Categorias ---------- */
 .categorias-nav {
   position: sticky; top: 0; z-index: 20;

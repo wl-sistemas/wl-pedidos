@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400..800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/base.css">
-  <link rel="stylesheet" href="css/cardapio.css">
+  <link rel="stylesheet" href="css/base.css?v=20261022">
+  <link rel="stylesheet" href="css/cardapio.css?v=20261022">
 </head>
 <body>
   <div id="carregando" class="carregando"><div class="girando"></div><span>Abrindo o cardápio…</span></div>
@@ -40,9 +40,16 @@
 
     <div id="avisoFechada" class="aviso aviso-fechada oculto"></div>
 
+    <div id="buscaCaixa" class="busca oculto" role="search">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="buscaTexto" type="search" placeholder="Buscar no cardápio" aria-label="Buscar no cardápio" autocomplete="off" enterkeyhint="search">
+      <button id="buscaLimpar" class="busca-limpar oculto" type="button" aria-label="Limpar busca"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </div>
+
     <nav id="categoriasNav" class="categorias-nav" aria-label="Categorias"></nav>
 
     <main id="secoes" class="secoes"></main>
+    <p id="buscaVazia" class="vazio oculto"></p>
 
     <footer class="rodape">
       <a id="rodapeWL" href="#" target="_blank" rel="noopener">Cardápio digital feito com WL Pedidos</a>
@@ -150,10 +157,10 @@
     </div>
   </div>
 
-  <script src="config.js"></script>
-  <script src="js/util.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/demo.js"></script>
-  <script src="js/cardapio.js"></script>
+  <script src="config.js?v=20261022"></script>
+  <script src="js/util.js?v=20261022"></script>
+  <script src="js/api.js?v=20261022"></script>
+  <script src="js/demo.js?v=20261022"></script>
+  <script src="js/cardapio.js?v=20261022"></script>
 </body>
 </html>

@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400..800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/base.css">
-  <link rel="stylesheet" href="css/painel.css">
+  <link rel="stylesheet" href="css/base.css?v=20261022">
+  <link rel="stylesheet" href="css/painel.css?v=20261022">
 </head>
 <body>
   <div id="carregando" class="carregando"><div class="girando"></div><span>Abrindo o painel…</span></div>
@@ -44,7 +44,7 @@
     <!-- ============ PEDIDOS ============ -->
     <section id="aba-pedidos" class="aba" role="tabpanel">
       <div class="resumo-dia">
-        <p>Hoje: <strong id="resPedidos">0 pedidos</strong>, <strong id="resVendas">R$ 0,00</strong> vendidos<span id="resTicket"></span></p>
+        <p>Hoje: <strong id="resPedidos">0 pedidos</strong>, <strong id="resVendas">R$ 0,00</strong> vendidos<span id="resTicket"></span><span id="resReceber" class="res-receber"></span></p>
         <a id="btnBalcao" class="btn btn-escuro" href="#" target="_blank" rel="noopener">Novo pedido no balcão</a>
       </div>
 
@@ -75,73 +75,145 @@
 
     <!-- ============ LOJA ============ -->
     <section id="aba-loja" class="aba oculto" role="tabpanel">
-      <div class="loja-grade">
-        <div class="cartao link-cartao">
-          <h2>Link do cardápio</h2>
-          <p class="texto-suave">Coloque na bio do Instagram, no WhatsApp e imprima o QR para as mesas.</p>
-          <div class="link-caixa"><code id="linkCardapio"></code></div>
-          <div class="linha-botoes">
-            <button id="btnCopiarLink" class="btn btn-p" type="button">Copiar link</button>
-            <a id="btnAbrirLink" class="btn btn-p" href="#" target="_blank" rel="noopener">Abrir</a>
-            <a id="btnBaixarQR" class="btn btn-p" href="#" target="_blank" rel="noopener">Baixar QR code</a>
-          </div>
-          <img id="imgQR" class="qr" alt="QR code do cardápio" width="200" height="200">
+      <div class="cabeca-aba">
+        <div>
+          <h2>Loja</h2>
+          <p class="texto-suave">Dados que aparecem no cardápio e configurações deste computador.</p>
         </div>
+      </div>
 
-        <div class="cartao">
-          <h2>Impressora deste computador</h2>
-          <p class="texto-suave">Escolha a largura do papel da impressora térmica. Fica salvo só neste computador.</p>
-          <div class="papel-linha">
-            <select id="papelLargura" aria-label="Largura do papel">
-              <option value="58">Papel 58 mm</option>
-              <option value="80">Papel 80 mm</option>
-            </select>
-            <button id="btnTesteImpressao" class="btn btn-p" type="button">Imprimir teste</button>
-          </div>
-        </div>
-
-        <form id="formLoja" class="cartao" novalidate>
-          <h2>Dados da loja</h2>
-          <label class="campo"><span>Nome da loja</span><input id="lNome" maxlength="80" required></label>
-          <div class="campo">
-            <span>Logo</span>
-            <div class="imagem-campo">
-              <img id="lLogoPrevia" class="previa oculto" alt="">
-              <div class="imagem-botoes">
-                <label class="btn btn-p">Enviar imagem<input id="lLogoArquivo" type="file" accept="image/*" class="sr"></label>
-                <button id="lLogoRemover" class="btn btn-p btn-texto" type="button">Remover</button>
-              </div>
+      <div class="loja-layout">
+        <form id="formLoja" class="loja-principal" novalidate>
+          <section class="cartao secao-loja">
+            <h3>Identidade</h3>
+            <p class="texto-suave">Como a loja aparece para o cliente.</p>
+            <div class="secao-campos">
+              <label class="campo"><span>Nome da loja</span><input id="lNome" maxlength="80" required></label>
+              <label class="campo"><span>Cor principal</span>
+                <span class="cor-linha"><input id="lCor" type="color" value="#0f766e"><code id="lCorTexto"></code><small>Botões e topo do cardápio.</small></span></label>
             </div>
-            <input id="lLogo" type="url" placeholder="ou cole o endereço da imagem" maxlength="500">
+            <div class="campo">
+              <span>Logo</span>
+              <div class="imagem-campo">
+                <img id="lLogoPrevia" class="previa oculto" alt="">
+                <div class="imagem-botoes">
+                  <label class="btn btn-p">Enviar imagem<input id="lLogoArquivo" type="file" accept="image/*" class="sr"></label>
+                  <button id="lLogoRemover" class="btn btn-p btn-texto" type="button">Remover</button>
+                </div>
+              </div>
+              <input id="lLogo" type="url" placeholder="ou cole o endereço da imagem" maxlength="500">
+            </div>
+          </section>
+
+          <section class="cartao secao-loja">
+            <h3>Contato e pagamento</h3>
+            <p class="texto-suave">O WhatsApp recebe as mensagens dos clientes. A chave PIX aparece no fim do pedido.</p>
+            <div class="secao-campos">
+              <label class="campo"><span>WhatsApp da loja</span><input id="lWhats" type="tel" maxlength="20" placeholder="(43) 99999-9999"></label>
+              <label class="campo"><span>Chave PIX</span><input id="lPix" maxlength="120" placeholder="CNPJ, celular, e-mail ou aleatória"></label>
+            </div>
+            <fieldset class="bloco-check fichas" id="lFormas">
+              <legend>Formas de pagamento aceitas</legend>
+            </fieldset>
+          </section>
+
+          <section class="cartao secao-loja">
+            <h3>Pedidos e entrega</h3>
+            <p class="texto-suave">Marque como o cliente pode receber o pedido.</p>
+            <fieldset class="bloco-check fichas">
+              <legend>Tipos de pedido aceitos</legend>
+              <label><input type="checkbox" id="lDelivery"> Entrega</label>
+              <label><input type="checkbox" id="lRetirada"> Retirada no local</label>
+              <label><input type="checkbox" id="lMesa"> Pedido na mesa</label>
+            </fieldset>
+            <div class="secao-campos secao-campos-3">
+              <label class="campo"><span>Taxa de entrega</span><span class="campo-reais"><i>R$</i><input id="lTaxa" inputmode="decimal" placeholder="0,00"></span></label>
+              <label class="campo"><span>Pedido mínimo</span><span class="campo-reais"><i>R$</i><input id="lMinimo" inputmode="decimal" placeholder="0,00"></span></label>
+            </div>
+            <label class="campo"><span>Endereço da loja</span><input id="lEndereco" maxlength="200" placeholder="Rua, número, bairro, cidade"><small>Aparece para quem escolhe retirar no local.</small></label>
+          </section>
+
+          <section class="cartao secao-loja">
+            <h3>Funcionamento</h3>
+            <p class="texto-suave">Use o botão "Aberta/Fechada" no topo para abrir e fechar a loja.</p>
+            <label class="campo"><span>Mensagem quando a loja estiver fechada</span>
+              <input id="lMsgFechada" maxlength="200" placeholder="Ex.: Abrimos de terça a domingo, das 18h às 23h."></label>
+          </section>
+
+          <div class="barra-salvar" id="barraSalvar">
+            <p id="estadoLoja" class="estado-salvar">Tudo salvo</p>
+            <p id="erroLoja" class="aviso erro oculto" role="alert"></p>
+            <button id="btnDesfazerLoja" class="btn btn-texto oculto" type="button">Desfazer</button>
+            <button id="btnSalvarLoja" class="btn btn-escuro" type="submit">Salvar alterações</button>
           </div>
-          <label class="campo"><span>Cor principal</span>
-            <span class="cor-linha"><input id="lCor" type="color" value="#0f766e"><small>Usada nos botões e no topo do cardápio.</small></span></label>
-          <div class="campos-2">
-            <label class="campo"><span>WhatsApp da loja</span><input id="lWhats" type="tel" maxlength="20" placeholder="(43) 99999-9999"></label>
-            <label class="campo"><span>Chave PIX</span><input id="lPix" maxlength="120"></label>
-          </div>
-          <label class="campo"><span>Endereço</span><input id="lEndereco" maxlength="200"></label>
-          <div class="campos-2">
-            <label class="campo"><span>Taxa de entrega</span><input id="lTaxa" inputmode="decimal" placeholder="0,00"></label>
-            <label class="campo"><span>Pedido mínimo</span><input id="lMinimo" inputmode="decimal" placeholder="0,00"></label>
-          </div>
-          <fieldset class="bloco-check">
-            <legend>Tipos de pedido aceitos</legend>
-            <label><input type="checkbox" id="lDelivery"> Entrega</label>
-            <label><input type="checkbox" id="lRetirada"> Retirada no local</label>
-            <label><input type="checkbox" id="lMesa"> Pedido na mesa</label>
-          </fieldset>
-          <fieldset class="bloco-check" id="lFormas">
-            <legend>Formas de pagamento</legend>
-          </fieldset>
-          <label class="campo"><span>Mensagem quando a loja estiver fechada</span>
-            <input id="lMsgFechada" maxlength="200" placeholder="Ex.: Abrimos de terça a domingo, das 18h às 23h."></label>
-          <p id="erroLoja" class="aviso erro oculto" role="alert"></p>
-          <button id="btnSalvarLoja" class="btn btn-escuro" type="submit">Salvar dados da loja</button>
         </form>
+
+        <aside class="loja-lateral">
+          <div class="cartao link-cartao">
+            <h3>Link do cardápio</h3>
+            <p class="texto-suave">Coloque na bio do Instagram, no WhatsApp e imprima o QR para as mesas.</p>
+            <div class="link-caixa"><code id="linkCardapio"></code></div>
+            <div class="linha-botoes">
+              <button id="btnCopiarLink" class="btn btn-p btn-escuro" type="button">Copiar link</button>
+              <a id="btnAbrirLink" class="btn btn-p" href="#" target="_blank" rel="noopener">Abrir</a>
+              <a id="btnBaixarQR" class="btn btn-p" href="#" target="_blank" rel="noopener">Baixar QR</a>
+            </div>
+            <img id="imgQR" class="qr" alt="QR code do cardápio" width="160" height="160">
+          </div>
+
+          <div class="cartao" id="cartaoAvisos">
+            <h3>Aviso de pedido novo</h3>
+            <p class="texto-suave">O alarme toca e repete até alguém abrir o pedido. Vale só para este computador.</p>
+            <div class="config-linha">
+              <label class="campo"><span>Toque</span><select id="somToque"></select></label>
+              <label class="campo"><span>Volume</span><input id="somVolume" type="range" min="10" max="100" step="5"></label>
+            </div>
+            <button id="btnTestarSom" class="btn btn-p btn-escuro" type="button">▶ Testar som</button>
+            <div class="config-item">
+              <span>Avisos na tela do computador</span>
+              <b id="estadoNotificacao" class="estado"></b>
+            </div>
+            <button id="btnNotificacao" class="btn btn-p oculto" type="button">Permitir avisos</button>
+            <p id="ajudaNotificacao" class="texto-suave oculto">Clique no cadeado ao lado do endereço do site, em "Notificações" escolha "Permitir" e recarregue a página.</p>
+            <label class="check-linha config-item"><input type="checkbox" id="somTela"> Não deixar a tela apagar com o painel aberto</label>
+            <details class="dica">
+              <summary>O alarme não toca com o painel minimizado?</summary>
+              <p>Os navegadores "põem para dormir" abas paradas. Libere o site uma vez:</p>
+              <p><b>Edge:</b> Configurações › Sistema e desempenho › "Nunca colocar estes sites em suspensão" › Adicionar › <code>wl-sistemas.github.io</code></p>
+              <p><b>Chrome:</b> Configurações › Desempenho › "Sempre manter estes sites ativos" › Adicionar › <code>wl-sistemas.github.io</code></p>
+              <p>Deixe o painel aberto numa janela própria (pode minimizar) e o volume do computador ligado.</p>
+            </details>
+          </div>
+
+          <div class="cartao">
+            <h3>Impressora deste computador</h3>
+            <p class="texto-suave">Largura do papel da impressora térmica.</p>
+            <div class="papel-linha">
+              <select id="papelLargura" aria-label="Largura do papel">
+                <option value="58">Papel 58 mm</option>
+                <option value="80">Papel 80 mm</option>
+              </select>
+              <button id="btnTesteImpressao" class="btn btn-p" type="button">Imprimir teste</button>
+            </div>
+          </div>
+        </aside>
       </div>
     </section>
   </div>
+
+    <div id="faixaAlarme" class="faixa-alarme oculto" role="alert">
+      <span class="faixa-alarme-sino" aria-hidden="true">🔔</span>
+      <strong id="faixaAlarmeTexto">Novo pedido</strong>
+      <span class="faixa-alarme-acoes">
+        <button id="btnVerAlarme" class="btn btn-p" type="button">Ver pedido</button>
+        <button id="btnSilenciar" class="btn btn-p btn-texto" type="button">Silenciar</button>
+      </span>
+    </div>
+
+    <div id="faixaSom" class="faixa-som oculto" role="status">
+      <span><b>O som dos pedidos está desligado.</b> O navegador só libera o som depois de um clique.</span>
+      <button id="btnFaixaSom" class="btn btn-p btn-escuro" type="button">🔔 Clique aqui para ligar o som</button>
+    </div>
 
   <!-- Editor de produto -->
   <dialog id="modalProduto" class="modal" aria-labelledby="mpTitulo">
@@ -214,10 +286,10 @@
 
   <div id="impressao" aria-hidden="true"></div>
 
-  <script src="config.js"></script>
-  <script src="js/util.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/demo.js"></script>
-  <script src="js/painel.js"></script>
+  <script src="config.js?v=20261022"></script>
+  <script src="js/util.js?v=20261022"></script>
+  <script src="js/api.js?v=20261022"></script>
+  <script src="js/demo.js?v=20261022"></script>
+  <script src="js/painel.js?v=20261022"></script>
 </body>
 </html>
