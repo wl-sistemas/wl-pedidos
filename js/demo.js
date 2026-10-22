@@ -80,7 +80,12 @@
   }
   function carregarDb() {
     const db = ler(CHAVE_DB) || semente();
-    db.lojas.forEach(l => { Object.entries(ETAPA2_PADRAO()).forEach(([k, v]) => { if (!(k in l)) l[k] = v; }); });
+    db.lojas.forEach(l => {
+      Object.entries(ETAPA2_PADRAO()).forEach(([k, v]) => { if (!(k in l)) l[k] = v; });
+      if (!("codigo_entrega" in l)) l.codigo_entrega = false;
+    });
+    db.entregadores = db.entregadores || [];
+    db.entregas = db.entregas || [];
     return db;
   }
 
@@ -355,6 +360,23 @@
     return prod.id;
   }
 
+  function entregaPublica(db, token) {
+    const e = db.entregas.find(x => x.token === token);
+    if (!e) return null;
+    const p = db.pedidos.find(x => x.id === e.pedido_id);
+    const l = db.lojas.find(x => x.id === e.loja_id);
+    return {
+      status: e.status, entregador: e.entregador_nome, valor_entregador: e.valor_entregador, cobrar: e.cobrar,
+      forma_pagamento: e.forma_pagamento, recebido: e.recebido, saiu_em: e.saiu_em, entregue_em: e.entregue_em,
+      precisa_codigo: !!(l.codigo_entrega && e.codigo),
+      pedido: { numero: p.numero, status: p.status, cliente_nome: p.cliente_nome, telefone: p.telefone, endereco: p.endereco,
+                latitude: p.latitude, longitude: p.longitude, distancia_km: p.distancia_km, observacao: p.observacao,
+                troco_para: p.troco_para, total: p.total, criado_em: p.criado_em,
+                itens: db.itens_pedido.filter(i => i.pedido_id === p.id).map(i => ({ nome: i.nome, tamanho: i.tamanho, quantidade: i.quantidade, opcoes: i.opcoes, observacao: i.observacao })) },
+      loja: { nome: l.nome, whatsapp: l.whatsapp, endereco: l.endereco, cor_primaria: l.cor_primaria, logo_url: l.logo_url, latitude: l.latitude, longitude: l.longitude }
+    };
+  }
+
   const RPC = {
     is_super_admin: () => !!(usuario() && usuario().superAdmin),
     cardapio_publico: (db, a) => cardapio(db, a.p_slug),
@@ -363,12 +385,63 @@
       const p = db.pedidos.find(x => x.tracking_token === a.p_token);
       if (!p) return null;
       const l = db.lojas.find(x => x.id === p.loja_id);
+      const en = (db.entregas || []).filter(e => e.pedido_id === p.id && e.status !== "Cancelada").pop();
       return Object.assign(copia(p), {
+        entrega: en ? { entregador: en.entregador_nome.split(" ")[0], status: en.status, saiu_em: en.saiu_em, entregue_em: en.entregue_em,
+                        codigo: l.codigo_entrega && en.status !== "Entregue" ? en.codigo : null } : null,
         itens: db.itens_pedido.filter(i => i.pedido_id === p.id),
         loja: { nome: l.nome, slug: l.slug, whatsapp: l.whatsapp, cor_primaria: l.cor_primaria, logo_url: l.logo_url, chave_pix: l.chave_pix }
       });
     },
     salvar_produto: (db, a) => salvarProduto(db, a.p_loja, a.p),
+    despachar_pedido: (db, a) => {
+      const p = db.pedidos.find(x => x.id === Number(a.p_pedido));
+      if (!p || !podeGerenciar(db, p.loja_id)) throw new Error("Pedido não encontrado.");
+      if (p.tipo_atendimento !== "Delivery") throw new Error("Só pedidos de entrega podem ser despachados.");
+      if (p.status === "Finalizado" || p.status === "Cancelado") throw new Error("Este pedido já foi " + p.status.toLowerCase() + ".");
+      const en = db.entregadores.find(x => x.id === Number(a.p_entregador) && x.loja_id === p.loja_id);
+      if (!en || !en.ativo) throw new Error("Entregador não encontrado.");
+      if (db.entregas.some(e => e.pedido_id === p.id && e.status === "Entregue")) throw new Error("Este pedido já foi entregue.");
+      const l = db.lojas.find(x => x.id === p.loja_id);
+      const valor = a.p_valor != null ? n(a.p_valor) : en.valor_padrao != null ? n(en.valor_padrao) : n(p.taxa_entrega);
+      if (valor < 0 || valor > 1000) throw new Error("Valor do entregador inválido.");
+      const anterior = db.entregas.filter(e => e.pedido_id === p.id && e.codigo).pop();
+      db.entregas.forEach(e => { if (e.pedido_id === p.id && e.status !== "Cancelada") e.status = "Cancelada"; });
+      const token = crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g, () => (Math.random() * 16 | 0).toString(16));
+      db.entregas.push({ id: ++db.seq, loja_id: p.loja_id, pedido_id: p.id, entregador_id: en.id, entregador_nome: en.nome,
+        entregador_whatsapp: en.whatsapp, token, status: "Enviada", valor_entregador: valor, taxa_cliente: n(p.taxa_entrega),
+        cobrar: p.pago ? 0 : n(p.total), forma_pagamento: p.pagamento, recebido: 0,
+        codigo: anterior ? anterior.codigo : String(Math.floor(Math.random() * 10000)).padStart(4, "0"),
+        tentativas: 0, data_ref: p.data_ref, criado_em: new Date().toISOString(), saiu_em: null, entregue_em: null, acertado_em: null });
+      return { token, valor_entregador: valor, codigo_obrigatorio: !!l.codigo_entrega };
+    },
+    entrega_publica: (db, a) => entregaPublica(db, a.p_token),
+    entrega_atualizar: (db, a) => {
+      const e = db.entregas.find(x => x.token === a.p_token);
+      if (!e) throw new Error("Entrega não encontrada. Confira o link com a loja.");
+      if (e.status === "Cancelada") throw new Error("Esta entrega foi cancelada ou passada para outro entregador.");
+      const p = db.pedidos.find(x => x.id === e.pedido_id);
+      const l = db.lojas.find(x => x.id === e.loja_id);
+      if (p.status === "Cancelado") throw new Error("O pedido foi cancelado pela loja.");
+      const agora = new Date().toISOString();
+      if (a.p_acao === "saiu") {
+        if (e.status === "Enviada") {
+          e.status = "A caminho"; e.saiu_em = agora;
+          if (["Recebido", "Em preparo", "Pronto"].includes(p.status)) { p.status = "Saiu para entrega"; p.atualizado_em = agora; }
+        }
+      } else if (a.p_acao === "entregue") {
+        if (e.status !== "Entregue") {
+          if (l.codigo_entrega && e.codigo) {
+            if (e.tentativas >= 8) return { ok: false, erro: "Muitas tentativas erradas. Ligue para a loja." };
+            if (String(a.p_codigo || "").trim() !== e.codigo) { e.tentativas++; return { ok: false, erro: "Código errado. Peça ao cliente o código de 4 números do pedido." }; }
+          }
+          const pix = e.forma_pagamento === "Pix";
+          Object.assign(e, { status: "Entregue", entregue_em: agora, saiu_em: e.saiu_em || agora, recebido: pix ? 0 : e.cobrar });
+          Object.assign(p, { status: "Finalizado", pago: pix && e.cobrar > 0 ? !!p.pago : true, atualizado_em: agora });
+        }
+      } else throw new Error("Ação inválida.");
+      return { ok: true, entrega: entregaPublica(db, a.p_token) };
+    },
     status_loja: (db, a) => {
       if (!podeGerenciar(db, a.p_loja)) throw new Error("Sem permissão para esta loja.");
       const l = db.lojas.find(x => x.id === a.p_loja);
@@ -443,7 +516,7 @@
       return null;
     }
   };
-  const SO_LEITURA = ["is_super_admin", "cardapio_publico", "acompanhar_pedido", "master_listar_lojas"];
+  const SO_LEITURA = ["is_super_admin", "cardapio_publico", "acompanhar_pedido", "master_listar_lojas", "entrega_publica", "status_loja", "historico_pedidos"];
 
   window.WL = {
     demo: true,
@@ -481,7 +554,10 @@
       const db = carregarDb();
       const linhas = (Array.isArray(dados) ? dados : [dados]).map(d => {
         if (!podeGerenciar(db, d.loja_id)) throw new Error("Sem permissão para esta ação.");
-        const l = Object.assign({ id: ++db.seq, ordem: 0, ativa: true }, d);
+        const padrao = tabela === "entregadores"
+          ? { id: ++db.seq, ativo: true, valor_padrao: null, whatsapp: null, criado_em: new Date().toISOString() }
+          : { id: ++db.seq, ordem: 0, ativa: true };
+        const l = Object.assign(padrao, d);
         db[tabela].push(l);
         return l;
       });
@@ -511,6 +587,8 @@
       if (tabela === "pedidos") alvo = alvo.filter(p => p.status === "Cancelado");
       const ids = alvo.map(x => x.id);
       db[tabela] = db[tabela].filter(x => !ids.includes(x.id));
+      if (tabela === "pedidos") db.entregas = db.entregas.filter(e => !ids.includes(e.pedido_id));
+      if (tabela === "entregadores") db.entregas.forEach(e => { if (ids.includes(e.entregador_id)) e.entregador_id = null; });
       if (tabela === "categorias") db.produtos.forEach(p => { if (ids.includes(p.categoria_id)) p.categoria_id = null; });
       if (tabela === "produtos") {
         const grupos = db.grupos_opcoes.filter(g => ids.includes(g.produto_id)).map(g => g.id);

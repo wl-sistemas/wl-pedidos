@@ -53,6 +53,16 @@
     motivo.classList.toggle("oculto", !(p.status === "Cancelado" && p.motivo_cancelamento));
     motivo.textContent = p.motivo_cancelamento ? "Motivo: " + p.motivo_cancelamento : "";
 
+    const en = p.entrega;
+    $("#caixaEntrega").classList.toggle("oculto", !en || p.status === "Cancelado");
+    if (en) {
+      $("#entregaTexto").textContent = en.status === "Entregue" ? en.entregador + " entregou seu pedido."
+        : en.status === "A caminho" ? en.entregador + " está a caminho com seu pedido."
+        : en.entregador + " vai levar seu pedido.";
+      $("#caixaCodigo").classList.toggle("oculto", !en.codigo);
+      $("#entregaCodigo").textContent = en.codigo || "";
+    }
+
     const etapas = U.etapas(p.tipo_atendimento);
     const pos = etapas.indexOf(p.status);
     $("#etapas").classList.toggle("oculto", p.status === "Cancelado");

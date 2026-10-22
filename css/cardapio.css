@@ -242,3 +242,40 @@ body { padding-bottom: 96px; }
 .local-dica { margin: 8px 0 0; font-size: 13px; color: var(--suave); }
 .local-resultado { margin: 10px 0 0; padding: 10px 12px; border-radius: var(--raio-p); background: #e9f7ee; color: #17663a; font-weight: 700; font-size: 15px; }
 .local-resultado.erro { background: #fdecea; color: #7a1a12; }
+
+/* ---------- Acompanhamento: entregador e codigo ---------- */
+.acomp-entrega { margin: 12px 0 0; padding: 12px 14px; border-radius: var(--raio-p); background: var(--cor-suave); }
+.acomp-entrega p { margin: 0; font-weight: 700; }
+.acomp-codigo { display: grid; justify-items: center; gap: 2px; margin-top: 10px; padding: 12px; border-radius: var(--raio-p); background: var(--papel); border: 2px dashed var(--cor); text-align: center; }
+.acomp-codigo span { font-size: 13px; color: var(--suave); font-weight: 600; }
+.acomp-codigo strong { font: 800 40px/1.1 var(--fonte-titulo); letter-spacing: .18em; color: var(--cor); }
+.acomp-codigo small { font-size: 13px; color: var(--suave); }
+
+/* ---------- Pagina do entregador ---------- */
+.ent { padding: 16px 16px 120px; }
+.ent-topo { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.ent-topo img { width: 46px; height: 46px; border-radius: 12px; object-fit: cover; }
+.ent-topo h1 { font-size: 20px; font-weight: 800; }
+.ent-topo p { margin: 0; color: var(--suave); font-size: 14px; }
+.ent-status { margin: 0 0 14px; padding: 12px 14px; border-radius: var(--raio-p); font-weight: 800; font-size: 18px; text-align: center; background: var(--cor-suave); color: var(--tinta); }
+.ent-status.ok { background: #e9f7ee; color: #17663a; }
+.ent-status.ruim { background: #fdecea; color: #7a1a12; }
+.ent-bloco { background: var(--papel); border: 1px solid var(--linha); border-radius: var(--raio); padding: 14px; margin-bottom: 12px; }
+.ent-bloco h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--suave); margin: 0 0 6px; font-family: var(--fonte); font-weight: 700; }
+.ent-nome { font-size: 20px; font-weight: 800; margin: 0; }
+.ent-endereco { font-size: 19px; font-weight: 700; margin: 0; line-height: 1.35; }
+.ent-km { margin: 4px 0 0; color: var(--suave); font-size: 14px; }
+.ent-botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.ent-cobrar { border: 2px solid var(--alerta); background: #fff8e8; }
+.ent-cobrar.pago { border-color: #a5d0b7; background: #e9f7ee; }
+.ent-cobrar.pix { border-color: #93b4f5; background: #eef4ff; }
+.ent-cobrar strong { display: block; font: 800 30px/1.1 var(--fonte-titulo); }
+.ent-cobrar p { margin: 4px 0 0; font-weight: 600; }
+.ent-itens { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ent-itens small { display: block; color: var(--suave); }
+.ent-ganho { text-align: center; color: var(--suave); margin: 4px 0 12px; }
+.ent-ganho b { color: var(--tinta); }
+.ent-acao { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--papel); border-top: 1px solid var(--linha); box-shadow: 0 -8px 24px rgba(0,0,0,.08); }
+.ent-acao .pagina-estreita { display: grid; gap: 8px; }
+.ent-acao .btn { min-height: 56px; font-size: 18px; }
+.ent-codigo { font: 800 28px/1 var(--fonte-titulo) !important; text-align: center; letter-spacing: .3em; }

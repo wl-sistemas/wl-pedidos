@@ -43,6 +43,7 @@
     prepararPedidos();
     prepararCardapio();
     prepararLoja();
+    prepararEntregas();
 
     $("#carregando").classList.add("oculto");
     $("#app").classList.remove("oculto");
@@ -136,6 +137,7 @@
       $$(".aba").forEach(s => s.classList.toggle("oculto", s.id !== "aba-" + b.dataset.aba));
       if (b.dataset.aba === "cardapio") carregarCardapio();
       if (b.dataset.aba === "loja") preencherLoja();
+      if (b.dataset.aba === "entregas") abrirAbaEntregas();
     }));
   }
 
@@ -238,6 +240,7 @@
     doDia = d;
 
     await carregarItens(a.concat(d));
+    await carregarEntregasDosPedidos(a.concat(d, filtro === "historico" ? historico : []));
 
     const novos = [];
     a.forEach(p => {
@@ -289,6 +292,7 @@
       historico = await WL.rpc("historico_pedidos", { p_loja: lojaId, p_de: de, p_ate: ate, p_busca: $("#hBusca").value.trim() || null });
       historicoCarregado = true;
       await carregarItens(historico);
+      await carregarEntregasDosPedidos(historico);
     } catch (e) {
       historico = [];
       $("#hResumo").textContent = /historico_pedidos/.test(e.message) ? "Falta rodar o script 08-etapa2.sql no Supabase." : e.message;
@@ -664,6 +668,7 @@
         ${p.latitude != null ? `<p class="pedido-local"><span class="tipo tipo-km">📍 ${p.distancia_km != null ? U.km(p.distancia_km) : "local marcado"}</span>
           <a href="${U.linkMapa(p.latitude, p.longitude)}" target="_blank" rel="noopener">Abrir no mapa</a></p>` : ""}
         ${filtro === "historico" ? `<p class="pedido-data">${U.dataHora(p.criado_em)}</p>` : ""}
+        ${linhaEntrega(p)}
 
         <ul class="pedido-itens">
           ${itens.map(i => `
@@ -696,7 +701,7 @@
             ${prox ? `<button class="btn btn-cor btn-avancar" data-acao="avancar" data-status="${esc(prox)}" type="button">${esc(TEXTO_BOTAO[prox] || prox)}</button>` : ""}
             <button class="btn btn-p" data-acao="imprimir" type="button">Imprimir</button>
             ${p.telefone ? '<button class="btn btn-p" data-acao="whatsapp" type="button">WhatsApp</button>' : ""}
-            ${p.tipo_atendimento === "Delivery" && p.status !== "Finalizado" ? '<button class="btn btn-p" data-acao="entregador" type="button" title="Mandar endereço e localização para o entregador">Entregador</button>' : ""}
+            ${botaoEntrega(p)}
             ${p.status !== "Finalizado" ? '<button class="btn btn-p btn-texto btn-perigo" data-acao="cancelar" type="button">Cancelar</button>' : ""}
           </div>`}
       </article>`;
@@ -727,6 +732,11 @@
       imprimir(p);
     } else if (acao === "whatsapp") {
       U.abrirLink(U.linkWhatsapp(p.telefone, mensagemCliente(p)));
+    } else if (acao === "despachar") {
+      abrirDespacho(p);
+    } else if (acao === "reenviar") {
+      const en = entregasPorPedido[p.id];
+      if (en) mostrarLinkEntrega(p, en, en.token);
     } else if (acao === "entregador") {
       U.abrirLink(U.linkWhatsapp("", mensagemEntregador(p)));
     } else if (acao === "cancelar") {
@@ -861,6 +871,7 @@
       ${p.telefone ? `<p>Fone: ${esc(U.telefoneBonito(p.telefone))}</p>` : ""}
       ${p.endereco ? `<p>Endereço: ${esc(p.endereco)}</p>` : ""}
       ${p.distancia_km != null ? `<p>Distância: ${U.km(p.distancia_km)}</p>` : ""}
+      ${entregasPorPedido[p.id] ? `<p>Entregador: ${esc(entregasPorPedido[p.id].entregador_nome)}</p>` : ""}
       <hr>
       ${itens.map(i => `
         <p class="cupom-item"><span>${i.quantidade}x ${esc(i.nome)}${i.tamanho ? " " + esc(i.tamanho) : ""}</span><span>${moeda(i.total)}</span></p>
@@ -886,6 +897,395 @@
       <hr>
       <p class="cupom-item cupom-total"><span>TOTAL</span><span>${moeda(22)}</span></p>
       <p>Se o texto ficou pequeno ou cortado, troque o papel acima e teste de novo.</p>`);
+  }
+
+  // ==================================================================
+  // ENTREGADORES (despacho, pagina do entregador e acerto)
+  // ==================================================================
+  let entregadores = [];
+  let entregadoresCarregados = false;
+  const entregasPorPedido = {};
+  let entregasOk = null; // false = banco sem o script 09
+  const semTabelaEntregas = e => /entrega/i.test(e.message || "");
+
+  async function carregarEntregadores() {
+    try {
+      entregadores = await WL.listar("entregadores", { select: "*", loja_id: "eq." + lojaId, order: "nome" });
+      entregadoresCarregados = true;
+      entregasOk = true;
+    } catch (e) {
+      if (semTabelaEntregas(e)) entregasOk = false;
+      else throw e;
+    }
+  }
+
+  async function carregarEntregasDosPedidos(pedidos) {
+    if (entregasOk === false) return;
+    const ids = [...new Set(pedidos.filter(p => p.tipo_atendimento === "Delivery").map(p => p.id))];
+    try {
+      for (let i = 0; i < ids.length; i += 80) {
+        const parte = ids.slice(i, i + 80);
+        const linhas = await WL.listar("entregas", { select: "*", pedido_id: "in.(" + parte.join(",") + ")", status: "neq.Cancelada" });
+        parte.forEach(id => { delete entregasPorPedido[id]; });
+        linhas.forEach(en => { entregasPorPedido[en.pedido_id] = en; });
+      }
+      entregasOk = true;
+    } catch (e) {
+      if (semTabelaEntregas(e)) entregasOk = false;
+    }
+  }
+
+  function linhaEntrega(p) {
+    const en = entregasPorPedido[p.id];
+    if (!en || p.tipo_atendimento !== "Delivery") return "";
+    const quando = en.status === "Entregue" && en.entregue_em ? " às " + U.hora(en.entregue_em)
+      : en.status === "A caminho" && en.saiu_em ? " desde " + U.hora(en.saiu_em) : "";
+    const classe = en.status === "Entregue" ? "moto-ok" : en.status === "A caminho" ? "moto-caminho" : "";
+    return `<p class="pedido-entrega"><span class="tipo tipo-moto ${classe}">🛵 ${esc(en.entregador_nome)} · ${esc(en.status === "Enviada" ? "aguardando sair" : en.status.toLowerCase())}${quando}</span>
+      ${en.status !== "Entregue" ? '<button class="btn btn-p btn-texto" data-acao="reenviar" type="button">Reenviar link</button>' : ""}</p>`;
+  }
+
+  function botaoEntrega(p) {
+    if (p.tipo_atendimento !== "Delivery" || p.status === "Finalizado" || p.status === "Cancelado") return "";
+    if (entregasOk === false) return '<button class="btn btn-p" data-acao="entregador" type="button" title="Mandar endereço e localização para o entregador">Entregador</button>';
+    const en = entregasPorPedido[p.id];
+    if (en && en.status === "Entregue") return "";
+    return `<button class="btn btn-p ${en ? "" : "btn-moto"}" data-acao="despachar" type="button">${en ? "Trocar entregador" : "🛵 Despachar"}</button>`;
+  }
+
+  // ---------- Janela de despacho ----------
+  let despachando = null;
+
+  function textoDiferenca(valor, taxa) {
+    if (!Number.isFinite(valor)) return "";
+    const t = Number(taxa || 0);
+    if (Math.abs(valor - t) < 0.005) return "Igual à taxa que o cliente pagou (" + moeda(t) + ").";
+    if (valor > t) return "O cliente pagou " + moeda(t) + " de taxa. A loja paga a diferença de " + moeda(valor - t) + ".";
+    return "O cliente pagou " + moeda(t) + " de taxa. Sobram " + moeda(t - valor) + " para a loja.";
+  }
+
+  function desenharOpcoesEntregadores(selecionado) {
+    const ativos = entregadores.filter(e => e.ativo);
+    $("#mdEntregadores").innerHTML = ativos.length ? ativos.map(e => `
+      <label class="md-entregador"><input type="radio" name="mdEntregador" value="${e.id}" ${e.id === selecionado ? "checked" : ""}>
+        <span><b>${esc(e.nome)}</b><small>${e.valor_padrao != null ? moeda(e.valor_padrao) + " por entrega" : "recebe a taxa do pedido"}</small></span></label>`).join("")
+      : '<p class="texto-suave">Nenhum entregador cadastrado ainda. Cadastre abaixo.</p>';
+    $("#mdNovo").open = !ativos.length;
+    $$('input[name="mdEntregador"]').forEach(r => r.addEventListener("change", () => escolherEntregador(Number(r.value))));
+    if (selecionado) escolherEntregador(selecionado);
+  }
+
+  function escolherEntregador(id) {
+    const e = entregadores.find(x => x.id === id);
+    if (!e || !despachando) return;
+    const valor = e.valor_padrao != null ? Number(e.valor_padrao) : Number(despachando.taxa_entrega || 0);
+    $("#mdValor").value = valorTexto(valor);
+    $("#mdDiferenca").textContent = textoDiferenca(valor, despachando.taxa_entrega);
+  }
+
+  async function abrirDespacho(p) {
+    despachando = p;
+    if (!entregadoresCarregados) { try { await carregarEntregadores(); } catch (e) { return U.toast(e.message, "erro"); } }
+    if (entregasOk === false) return U.toast("Falta rodar o script 09-entregadores.sql no Supabase.", "erro");
+    $("#mdTitulo").textContent = "Despachar pedido #" + p.numero;
+    const cobrar = p.pago ? "já pago" : p.pagamento === "Pix" ? "Pix ainda não marcado como pago (" + moeda(p.total) + ")"
+      : "cobrar " + moeda(p.total) + (p.pagamento ? " (" + p.pagamento + ")" : "");
+    $("#mdResumo").textContent = p.cliente_nome + " · " + (p.endereco || "") + (p.distancia_km != null ? " · " + U.km(p.distancia_km) : "") + " · " + cobrar;
+    $("#mdPasso1").classList.remove("oculto");
+    $("#mdPasso2").classList.add("oculto");
+    $("#btnDespachar").classList.remove("oculto");
+    $("#mdRodape [data-fechar-modal]").textContent = "Cancelar";
+    $("#erroDespachar").classList.add("oculto");
+    $("#mdNovoNome").value = ""; $("#mdNovoWhats").value = "";
+    const atual = entregasPorPedido[p.id];
+    const ultimo = Number(U.lerLocal("wl_ultimo_entregador_" + lojaId, 0));
+    const ativos = entregadores.filter(e => e.ativo);
+    const sel = [atual && atual.entregador_id, ultimo].find(id => ativos.some(e => e.id === id)) || (ativos[0] && ativos[0].id);
+    $("#mdValor").value = ""; $("#mdDiferenca").textContent = "";
+    desenharOpcoesEntregadores(sel);
+    $("#modalDespachar").showModal();
+  }
+
+  async function cadastrarNoDespacho() {
+    const nome = $("#mdNovoNome").value.trim();
+    const whats = $("#mdNovoWhats").value.replace(/\D/g, "");
+    if (nome.length < 2) return U.toast("Informe o nome do entregador.", "erro");
+    if (whats && whats.length < 10) return U.toast("WhatsApp inválido. Use DDD + número.", "erro");
+    await U.ocupado($("#btnMdNovo"), "Salvando…", async () => {
+      try {
+        const r = await WL.inserir("entregadores", { loja_id: lojaId, nome, whatsapp: whats || null });
+        entregadores.push(r[0]);
+        entregadores.sort((a, b) => a.nome.localeCompare(b.nome));
+        desenharOpcoesEntregadores(r[0].id);
+        $("#mdNovo").open = false;
+      } catch (e) { U.toast(e.message, "erro"); }
+    });
+  }
+
+  async function confirmarDespacho() {
+    const p = despachando;
+    const marcado = $('input[name="mdEntregador"]:checked');
+    const erro = msg => { $("#erroDespachar").textContent = msg; $("#erroDespachar").classList.remove("oculto"); };
+    if (!marcado) return erro("Escolha o entregador.");
+    const valor = $("#mdValor").value.trim() === "" ? NaN : U.numero($("#mdValor").value);
+    if (!Number.isFinite(valor) || valor < 0) return erro("Informe quanto o entregador vai receber.");
+    const en = entregadores.find(e => e.id === Number(marcado.value));
+    await U.ocupado($("#btnDespachar"), "Despachando…", async () => {
+      try {
+        const r = await WL.rpc("despachar_pedido", { p_pedido: p.id, p_entregador: en.id, p_valor: valor });
+        U.gravarLocal("wl_ultimo_entregador_" + lojaId, en.id);
+        const entrega = { entregador_nome: en.nome, entregador_whatsapp: en.whatsapp, valor_entregador: valor, status: "Enviada", token: r.token, pedido_id: p.id, entregador_id: en.id };
+        entregasPorPedido[p.id] = entrega;
+        mostrarLinkEntrega(p, entrega, r.token, true);
+        desenharPedidos();
+        cicloPedidos();
+      } catch (e) { erro(e.message); }
+    });
+  }
+
+  function linkEntrega(token) { return new URL("entregador.html?t=" + token, location.href).href; }
+
+  function mensagemDespacho(p, en, token) {
+    const linhas = ["*Entrega - " + loja.nome + "*", "Pedido #" + p.numero + " · " + p.cliente_nome];
+    if (p.endereco) linhas.push("Endereço: " + p.endereco + (p.distancia_km != null ? " (" + U.km(p.distancia_km) + ")" : ""));
+    linhas.push(p.pago ? "Pagamento: JÁ PAGO, não cobrar" :
+      "Cobrar: " + moeda(p.total) + " (" + (p.pagamento || "pagamento não informado") + ")" + (p.troco_para ? ", troco para " + moeda(p.troco_para) : ""));
+    linhas.push("Você recebe: " + moeda(en.valor_entregador));
+    linhas.push("", "Abra o link para ver o mapa e marcar a entrega:", linkEntrega(token));
+    return linhas.join("\n");
+  }
+
+  function mostrarLinkEntrega(p, en, token, recemDespachado) {
+    despachando = p;
+    $("#mdTitulo").textContent = "Pedido #" + p.numero;
+    $("#mdOkTexto").textContent = recemDespachado ? "Pedido despachado para " + en.entregador_nome + "." : "Entrega com " + en.entregador_nome + ".";
+    $("#mdZap").href = U.linkWhatsapp(en.entregador_whatsapp || "", mensagemDespacho(p, en, token));
+    $("#mdZap").textContent = en.entregador_whatsapp ? "Enviar para " + en.entregador_nome.split(" ")[0] + " no WhatsApp" : "Enviar no WhatsApp";
+    $("#mdCopiar").onclick = () => U.copiar(linkEntrega(token));
+    $("#mdPasso1").classList.add("oculto");
+    $("#mdPasso2").classList.remove("oculto");
+    $("#btnDespachar").classList.add("oculto");
+    $("#mdRodape [data-fechar-modal]").textContent = "Fechar";
+    if (!$("#modalDespachar").open) $("#modalDespachar").showModal();
+  }
+
+  // ---------- Aba Entregas: cadastro e acerto ----------
+  let acertoDias = 0;
+
+  function prepararEntregas() {
+    $("#btnMdNovo").onclick = cadastrarNoDespacho;
+    $("#btnDespachar").onclick = confirmarDespacho;
+    $("#mdValor").addEventListener("input", () => {
+      if (!despachando) return;
+      const v = $("#mdValor").value.trim() === "" ? NaN : U.numero($("#mdValor").value);
+      $("#mdDiferenca").textContent = textoDiferenca(v, despachando.taxa_entrega);
+    });
+    $("#formEntregador").addEventListener("submit", e => { e.preventDefault(); salvarEntregador(); });
+    $("#btnCancelarEntregador").onclick = limparFormEntregador;
+    $("#listaEntregadores").addEventListener("click", aoClicarEntregador);
+    $$("[data-acerto]").forEach(b => b.addEventListener("click", () => { acertoDias = Number(b.dataset.acerto); carregarAcerto(); }));
+    $("#listaAcerto").addEventListener("click", aoClicarAcerto);
+    $("#chkCodigoEntrega").addEventListener("change", async () => {
+      const valor = $("#chkCodigoEntrega").checked;
+      try {
+        const r = await WL.atualizar("lojas", { id: "eq." + lojaId }, { codigo_entrega: valor });
+        if (!r.length) throw new Error("Sem permissão para alterar a loja.");
+        loja.codigo_entrega = valor;
+        U.toast(valor ? "Código de entrega ligado (vale para os próximos despachos)" : "Código de entrega desligado");
+      } catch (e) {
+        $("#chkCodigoEntrega").checked = !valor;
+        U.toast(/codigo_entrega/.test(e.message) ? "Falta rodar o script 09-entregadores.sql no Supabase." : e.message, "erro");
+      }
+    });
+  }
+
+  async function abrirAbaEntregas() {
+    try { await carregarEntregadores(); } catch (e) { U.toast(e.message, "erro"); }
+    const aviso = $("#avisoEntregas");
+    aviso.classList.toggle("oculto", entregasOk !== false);
+    aviso.textContent = "Para usar entregadores, rode o script 09-entregadores.sql no Supabase (SQL Editor).";
+    $(".entregas-layout").classList.toggle("oculto", entregasOk === false);
+    if (entregasOk === false) return;
+    $("#chkCodigoEntrega").checked = !!loja.codigo_entrega;
+    desenharEntregadores();
+    carregarAcerto();
+  }
+
+  function desenharEntregadores() {
+    const caixa = $("#listaEntregadores");
+    if (!entregadores.length) { caixa.innerHTML = '<p class="vazio-p">Nenhum entregador ainda.</p>'; return; }
+    caixa.innerHTML = entregadores.map(e => `
+      <div class="entregador-item ${e.ativo ? "" : "inativo"}" data-id="${e.id}">
+        <div>
+          <strong>${esc(e.nome)}</strong>${e.ativo ? "" : ' <span class="etiqueta">desativado</span>'}
+          <small>${e.whatsapp ? esc(U.telefoneBonito(e.whatsapp)) + " · " : ""}${e.valor_padrao != null ? moeda(e.valor_padrao) + " por entrega" : "recebe a taxa do pedido"}</small>
+        </div>
+        <div class="entregador-acoes">
+          <button type="button" class="btn btn-p btn-texto" data-ent="editar">Editar</button>
+          <button type="button" class="btn btn-p btn-texto" data-ent="ativo">${e.ativo ? "Desativar" : "Ativar"}</button>
+          <button type="button" class="btn btn-p btn-texto btn-perigo" data-ent="excluir" aria-label="Excluir ${esc(e.nome)}">Excluir</button>
+        </div>
+      </div>`).join("");
+  }
+
+  function limparFormEntregador() {
+    $("#feId").value = ""; $("#feNome").value = ""; $("#feWhats").value = ""; $("#feValor").value = "";
+    $("#feTitulo").textContent = "Novo entregador";
+    $("#btnSalvarEntregador").textContent = "Cadastrar";
+    $("#btnCancelarEntregador").classList.add("oculto");
+    $("#erroEntregador").classList.add("oculto");
+  }
+
+  async function salvarEntregador() {
+    const erro = msg => { $("#erroEntregador").textContent = msg; $("#erroEntregador").classList.remove("oculto"); };
+    $("#erroEntregador").classList.add("oculto");
+    const nome = $("#feNome").value.trim();
+    const whats = $("#feWhats").value.replace(/\D/g, "");
+    const valorTxt = $("#feValor").value.trim();
+    const valor = valorTxt === "" ? null : U.numero(valorTxt);
+    if (nome.length < 2) return erro("Informe o nome do entregador.");
+    if (whats && whats.length < 10) return erro("WhatsApp inválido. Use DDD + número.");
+    if (valor !== null && (!Number.isFinite(valor) || valor < 0)) return erro("Valor por entrega inválido.");
+    const dados = { nome, whatsapp: whats || null, valor_padrao: valor };
+    const id = Number($("#feId").value) || null;
+    await U.ocupado($("#btnSalvarEntregador"), "Salvando…", async () => {
+      try {
+        if (id) {
+          const r = await WL.atualizar("entregadores", { id: "eq." + id }, dados);
+          if (!r.length) throw new Error("Não foi possível salvar.");
+          Object.assign(entregadores.find(e => e.id === id), r[0]);
+        } else {
+          const r = await WL.inserir("entregadores", Object.assign({ loja_id: lojaId }, dados));
+          entregadores.push(r[0]);
+        }
+        entregadores.sort((a, b) => a.nome.localeCompare(b.nome));
+        limparFormEntregador();
+        desenharEntregadores();
+        U.toast(id ? "Entregador atualizado" : "Entregador cadastrado");
+      } catch (e) { erro(e.message); }
+    });
+  }
+
+  async function aoClicarEntregador(e) {
+    const b = e.target.closest("[data-ent]");
+    if (!b) return;
+    const id = Number(b.closest("[data-id]").dataset.id);
+    const en = entregadores.find(x => x.id === id);
+    if (b.dataset.ent === "editar") {
+      $("#feId").value = id; $("#feNome").value = en.nome;
+      $("#feWhats").value = en.whatsapp ? U.telefoneBonito(en.whatsapp) : "";
+      $("#feValor").value = en.valor_padrao != null ? valorTexto(en.valor_padrao) : "";
+      $("#feTitulo").textContent = "Editar " + en.nome;
+      $("#btnSalvarEntregador").textContent = "Salvar";
+      $("#btnCancelarEntregador").classList.remove("oculto");
+      $("#feNome").focus();
+    } else if (b.dataset.ent === "ativo") {
+      try {
+        const r = await WL.atualizar("entregadores", { id: "eq." + id }, { ativo: !en.ativo });
+        Object.assign(en, r[0]);
+        desenharEntregadores();
+      } catch (err) { U.toast(err.message, "erro"); }
+    } else if (b.dataset.ent === "excluir") {
+      if (!(await U.confirmar("Excluir " + en.nome + "? As entregas que ele já fez continuam no histórico.", "Excluir", true))) return;
+      try {
+        await WL.excluir("entregadores", { id: "eq." + id });
+        entregadores = entregadores.filter(x => x.id !== id);
+        desenharEntregadores();
+      } catch (err) { U.toast(err.message, "erro"); }
+    }
+  }
+
+  let acertoGrupos = [];
+  async function carregarAcerto() {
+    const de = acertoDias === 1 ? dataMenos(1) : dataMenos(Math.max(0, acertoDias - 1));
+    const ate = acertoDias === 1 ? dataMenos(1) : dataMenos(0);
+    $$("[data-acerto]").forEach(b => b.classList.toggle("btn-escuro", Number(b.dataset.acerto) === acertoDias));
+    $("#acertoPeriodo").textContent = de === ate ? "Dia " + de.split("-").reverse().join("/") : "De " + de.split("-").reverse().join("/") + " até " + ate.split("-").reverse().join("/");
+    const caixa = $("#listaAcerto");
+    caixa.innerHTML = '<p class="vazio-p">Carregando…</p>';
+    let entregas;
+    try {
+      entregas = (await WL.listar("entregas", { select: "*", loja_id: "eq." + lojaId, data_ref: "gte." + de, status: "neq.Cancelada", order: "criado_em" }))
+        .filter(x => x.data_ref <= ate);
+      const ids = [...new Set(entregas.map(x => x.pedido_id))];
+      const pedidos = {};
+      for (let i = 0; i < ids.length; i += 80) {
+        (await WL.listar("pedidos", { select: "id,numero,cliente_nome", id: "in.(" + ids.slice(i, i + 80).join(",") + ")" }))
+          .forEach(p => { pedidos[p.id] = p; });
+      }
+      entregas.forEach(x => { x._pedido = pedidos[x.pedido_id] || {}; });
+    } catch (e) {
+      caixa.innerHTML = '<p class="aviso erro">' + esc(e.message) + "</p>";
+      return;
+    }
+    const grupos = {};
+    entregas.forEach(x => {
+      const chave = x.entregador_id ? "id" + x.entregador_id : "nome" + x.entregador_nome;
+      (grupos[chave] = grupos[chave] || { nome: x.entregador_nome, whatsapp: x.entregador_whatsapp, lista: [] }).lista.push(x);
+    });
+    acertoGrupos = Object.values(grupos).sort((a, b) => a.nome.localeCompare(b.nome));
+    if (!acertoGrupos.length) { caixa.innerHTML = '<p class="vazio-p">Nenhuma entrega despachada nesse período.</p>'; return; }
+
+    let totalDif = 0, totalEnt = 0;
+    caixa.innerHTML = acertoGrupos.map((g, gi) => {
+      const feitas = g.lista.filter(x => x.status === "Entregue");
+      const pendentes = g.lista.filter(x => x.status !== "Entregue");
+      const soma = (l, f) => l.reduce((s, x) => s + Number(f(x) || 0), 0);
+      const pagar = soma(feitas, x => x.valor_entregador);
+      const taxas = soma(feitas, x => x.taxa_cliente);
+      const dinheiro = soma(feitas.filter(x => x.forma_pagamento === "Dinheiro"), x => x.recebido);
+      const outros = soma(feitas.filter(x => x.forma_pagamento !== "Dinheiro"), x => x.recebido);
+      const saldo = pagar - dinheiro;
+      const abertas = feitas.filter(x => !x.acertado_em);
+      totalDif += pagar - taxas; totalEnt += feitas.length;
+      g.resumo = { feitas, pagar, taxas, dinheiro, saldo, abertas };
+      const saldoTexto = Math.abs(saldo) < 0.005 ? "Nada a pagar: a conta fecha certinho."
+        : saldo > 0 ? "A loja paga " + moeda(saldo) + " para " + g.nome.split(" ")[0] + "."
+        : g.nome.split(" ")[0] + " devolve " + moeda(-saldo) + " para a loja.";
+      return `<article class="acerto-item" data-grupo="${gi}">
+        <header class="acerto-cabeca">
+          <h4>🛵 ${esc(g.nome)}</h4>
+          ${feitas.length && !abertas.length ? '<span class="estado estado-ok">Acertado ✓</span>' : ""}
+        </header>
+        <dl class="acerto-numeros">
+          <div><dt>Entregas feitas</dt><dd>${feitas.length}${pendentes.length ? ` <small>(+${pendentes.length} em andamento)</small>` : ""}</dd></div>
+          <div><dt>Taxas pagas pelos clientes</dt><dd>${moeda(taxas)}</dd></div>
+          <div><dt>Valor do entregador</dt><dd>${moeda(pagar)}</dd></div>
+          ${pagar - taxas > 0.005 ? `<div class="destaque-ruim"><dt>Diferença paga pela loja</dt><dd>${moeda(pagar - taxas)}</dd></div>` : ""}
+          <div><dt>Recebeu em dinheiro dos clientes</dt><dd>${moeda(dinheiro)}</dd></div>
+          ${outros > 0 ? `<div><dt>Recebeu em cartão/pix na entrega</dt><dd>${moeda(outros)}</dd></div>` : ""}
+        </dl>
+        <p class="acerto-saldo ${saldo < -0.005 ? "devolve" : ""}">${esc(saldoTexto)}</p>
+        <div class="linha-botoes">
+          ${abertas.length ? `<button type="button" class="btn btn-p btn-escuro" data-acerto-acao="acertar">Marcar como acertado (${abertas.length})</button>` : ""}
+          ${g.whatsapp ? '<button type="button" class="btn btn-p" data-acerto-acao="zap">Mandar resumo no WhatsApp</button>' : ""}
+        </div>
+        <details class="acerto-detalhe"><summary>Ver entregas</summary>
+          <ul>${g.lista.map(x => `<li><span>#${x._pedido.numero || "?"} ${esc(x._pedido.cliente_nome || "")}</span>
+            <span>${esc(x.status)}${x.entregue_em ? " " + U.hora(x.entregue_em) : ""}</span><span>${moeda(x.valor_entregador)}</span></li>`).join("")}</ul>
+        </details>
+      </article>`;
+    }).join("") + (totalEnt ? `<p class="acerto-total">${totalEnt} ${totalEnt === 1 ? "entrega" : "entregas"} no período${totalDif > 0.005 ? " · a loja pagou " + moeda(totalDif) + " de diferença nas taxas" : totalDif < -0.005 ? " · sobraram " + moeda(-totalDif) + " das taxas para a loja" : ""}.</p>` : "");
+  }
+
+  async function aoClicarAcerto(e) {
+    const b = e.target.closest("[data-acerto-acao]");
+    if (!b) return;
+    const g = acertoGrupos[Number(b.closest("[data-grupo]").dataset.grupo)];
+    const r = g.resumo;
+    if (b.dataset.acertoAcao === "acertar") {
+      if (!(await U.confirmar("Marcar " + r.abertas.length + " entrega(s) de " + g.nome + " como acertadas?", "Marcar acertado"))) return;
+      try {
+        await WL.atualizar("entregas", { id: "in.(" + r.abertas.map(x => x.id).join(",") + ")" }, { acertado_em: new Date().toISOString() });
+        U.toast("Acerto registrado");
+        carregarAcerto();
+      } catch (err) { U.toast(err.message, "erro"); }
+    } else if (b.dataset.acertoAcao === "zap") {
+      const linhas = ["*Acerto - " + loja.nome + "*", $("#acertoPeriodo").textContent, "",
+        "Entregas: " + r.feitas.length, "Valor das entregas: " + moeda(r.pagar), "Recebido em dinheiro: " + moeda(r.dinheiro), "",
+        Math.abs(r.saldo) < 0.005 ? "Saldo: zerado" : r.saldo > 0 ? "A loja te paga: " + moeda(r.saldo) : "Você devolve para a loja: " + moeda(-r.saldo)];
+      U.abrirLink(U.linkWhatsapp(g.whatsapp, linhas.join("\n")));
+    }
   }
 
   // ==================================================================

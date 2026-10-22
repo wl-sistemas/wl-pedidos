@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="robots" content="noindex">
+  <title>Entrega</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400..800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/base.css?v=20261022c">
+  <link rel="stylesheet" href="css/cardapio.css?v=20261022c">
+</head>
+<body>
+  <div id="carregando" class="carregando"><div class="girando"></div><span>Abrindo a entrega…</span></div>
+
+  <div id="erroTela" class="erro-tela oculto">
+    <h1>Entrega não encontrada</h1>
+    <p id="erroTexto">Confira o link com a loja.</p>
+  </div>
+
+  <main id="app" class="pagina-estreita ent oculto">
+    <div class="ent-topo">
+      <img id="lojaLogo" class="oculto" alt="">
+      <div>
+        <h1 id="lojaNome"></h1>
+        <p id="pedidoInfo"></p>
+      </div>
+    </div>
+
+    <p id="entStatus" class="ent-status"></p>
+
+    <section class="ent-bloco">
+      <h2>Cliente</h2>
+      <p id="cliNome" class="ent-nome"></p>
+      <div class="ent-botoes">
+        <a id="btnLigar" class="btn btn-p" href="#">📞 Ligar</a>
+        <a id="btnZapCliente" class="btn btn-p" href="#" target="_blank" rel="noopener">WhatsApp</a>
+      </div>
+    </section>
+
+    <section class="ent-bloco">
+      <h2>Endereço de entrega</h2>
+      <p id="cliEndereco" class="ent-endereco"></p>
+      <p id="cliKm" class="ent-km"></p>
+      <div class="ent-botoes">
+        <a id="btnMaps" class="btn btn-cor btn-p" href="#" target="_blank" rel="noopener">Google Maps</a>
+        <a id="btnWaze" class="btn btn-p" href="#" target="_blank" rel="noopener">Waze</a>
+      </div>
+    </section>
+
+    <section id="blocoCobrar" class="ent-bloco ent-cobrar">
+      <h2 id="cobrarTitulo">Cobrar do cliente</h2>
+      <strong id="cobrarValor"></strong>
+      <p id="cobrarForma"></p>
+    </section>
+
+    <section class="ent-bloco">
+      <h2>Itens do pedido</h2>
+      <ul id="listaItens" class="ent-itens"></ul>
+      <p id="pedidoObs" class="aviso oculto"></p>
+    </section>
+
+    <p id="entGanho" class="ent-ganho"></p>
+    <a id="btnZapLoja" class="btn btn-bloco btn-texto" href="#" target="_blank" rel="noopener">Falar com a loja</a>
+  </main>
+
+  <div id="barraAcao" class="ent-acao oculto">
+    <div class="pagina-estreita">
+      <p id="erroAcao" class="aviso erro oculto" role="alert"></p>
+      <input id="codigoEntrega" class="ent-codigo oculto" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="Código do cliente" aria-label="Código de entrega do cliente">
+      <button id="btnAcao" class="btn btn-cor btn-bloco" type="button"></button>
+    </div>
+  </div>
+
+  <script src="config.js?v=20261022c"></script>
+  <script src="js/util.js?v=20261022c"></script>
+  <script src="js/api.js?v=20261022c"></script>
+  <script src="js/demo.js?v=20261022c"></script>
+  <script src="js/entregador.js?v=20261022c"></script>
+</body>
+</html>

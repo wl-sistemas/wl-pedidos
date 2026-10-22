@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400..800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/base.css?v=20261022b">
-  <link rel="stylesheet" href="css/painel.css?v=20261022b">
+  <link rel="stylesheet" href="css/base.css?v=20261022c">
+  <link rel="stylesheet" href="css/painel.css?v=20261022c">
 </head>
 <body>
   <div id="carregando" class="carregando"><div class="girando"></div><span>Abrindo o painel…</span></div>
@@ -38,6 +38,7 @@
     <nav class="abas" role="tablist">
       <button type="button" role="tab" data-aba="pedidos" aria-selected="true">Pedidos <span id="badgeAndamento" class="badge oculto">0</span></button>
       <button type="button" role="tab" data-aba="cardapio" aria-selected="false">Cardápio</button>
+      <button type="button" role="tab" data-aba="entregas" aria-selected="false">Entregas</button>
       <button type="button" role="tab" data-aba="loja" aria-selected="false">Loja</button>
     </nav>
 
@@ -88,6 +89,63 @@
         </div>
       </div>
       <div id="listaCardapio"></div>
+    </section>
+
+    <!-- ============ ENTREGAS ============ -->
+    <section id="aba-entregas" class="aba oculto" role="tabpanel">
+      <div class="cabeca-aba">
+        <div>
+          <h2>Entregas</h2>
+          <p class="texto-suave">Quem levou cada pedido e o acerto com cada entregador.</p>
+        </div>
+      </div>
+
+      <p id="avisoEntregas" class="aviso oculto"></p>
+
+      <div class="entregas-layout">
+        <div class="entregas-principal">
+          <div class="cartao">
+            <div class="acerto-topo">
+              <h3>Acerto com os entregadores</h3>
+              <div class="historico-atalhos" role="group" aria-label="Período do acerto">
+                <button type="button" class="btn btn-p" data-acerto="0">Hoje</button>
+                <button type="button" class="btn btn-p" data-acerto="1">Ontem</button>
+                <button type="button" class="btn btn-p" data-acerto="7">7 dias</button>
+                <button type="button" class="btn btn-p" data-acerto="30">30 dias</button>
+              </div>
+            </div>
+            <p id="acertoPeriodo" class="texto-suave"></p>
+            <div id="listaAcerto" class="lista-acerto"></div>
+          </div>
+        </div>
+
+        <aside class="entregas-lateral">
+          <div class="cartao">
+            <h3>Entregadores</h3>
+            <p class="texto-suave">Cadastre quem faz as entregas da loja, fixos e avulsos.</p>
+            <div id="listaEntregadores" class="lista-entregadores"></div>
+            <form id="formEntregador" class="form-entregador" novalidate>
+              <h4 id="feTitulo">Novo entregador</h4>
+              <input type="hidden" id="feId">
+              <label class="campo"><span>Nome</span><input id="feNome" maxlength="60" placeholder="Ex.: João da moto"></label>
+              <label class="campo"><span>WhatsApp</span><input id="feWhats" type="tel" maxlength="20" placeholder="(43) 99999-9999"></label>
+              <label class="campo"><span>Valor por entrega (opcional)</span><span class="campo-reais"><i>R$</i><input id="feValor" inputmode="decimal" placeholder="igual à taxa"></span>
+                <small>Vazio = recebe a mesma taxa que o cliente pagou. Preencha para avulso que cobra um valor fixo.</small></label>
+              <p id="erroEntregador" class="aviso erro oculto" role="alert"></p>
+              <div class="linha-botoes">
+                <button id="btnSalvarEntregador" class="btn btn-escuro" type="submit">Cadastrar</button>
+                <button id="btnCancelarEntregador" class="btn btn-texto oculto" type="button">Cancelar edição</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="cartao">
+            <h3>Código de entrega</h3>
+            <label class="check-linha config-item"><input type="checkbox" id="chkCodigoEntrega"> Exigir código para confirmar a entrega</label>
+            <p class="texto-suave">O cliente vê um código de 4 números no acompanhamento do pedido e passa para o entregador, que só consegue marcar "Entreguei" com ele. Comprova que a entrega foi feita.</p>
+          </div>
+        </aside>
+      </div>
     </section>
 
     <!-- ============ LOJA ============ -->
@@ -324,6 +382,44 @@
     </form>
   </dialog>
 
+  <!-- Despachar para entregador -->
+  <dialog id="modalDespachar" class="modal modal-p" aria-labelledby="mdTitulo">
+    <form method="dialog" novalidate>
+      <header class="modal-cabeca">
+        <h2 id="mdTitulo">Despachar pedido</h2>
+        <button type="button" class="btn btn-texto" data-fechar-modal aria-label="Fechar">✕</button>
+      </header>
+      <div class="modal-corpo">
+        <div id="mdPasso1">
+          <p class="texto-suave" id="mdResumo"></p>
+          <div id="mdEntregadores" class="md-entregadores" role="radiogroup" aria-label="Entregador"></div>
+          <details id="mdNovo" class="md-novo">
+            <summary>+ Cadastrar entregador agora</summary>
+            <div class="campos-2">
+              <label class="campo"><span>Nome</span><input id="mdNovoNome" maxlength="60"></label>
+              <label class="campo"><span>WhatsApp</span><input id="mdNovoWhats" type="tel" maxlength="20"></label>
+            </div>
+            <button id="btnMdNovo" class="btn btn-p" type="button">Cadastrar e escolher</button>
+          </details>
+          <label class="campo md-valor"><span>Valor para o entregador</span>
+            <span class="campo-reais"><i>R$</i><input id="mdValor" inputmode="decimal"></span>
+            <small id="mdDiferenca"></small></label>
+          <p id="erroDespachar" class="aviso erro oculto" role="alert"></p>
+        </div>
+        <div id="mdPasso2" class="md-pronto oculto">
+          <p class="md-ok">✓ <span id="mdOkTexto"></span></p>
+          <p class="texto-suave">Mande o link para o entregador. Nele ele vê o endereço, o mapa, quanto cobrar e marca "Saí" e "Entreguei".</p>
+          <a id="mdZap" class="btn btn-cor btn-bloco" href="#" target="_blank" rel="noopener">Enviar para o entregador no WhatsApp</a>
+          <button id="mdCopiar" class="btn btn-bloco" type="button">Copiar link da entrega</button>
+        </div>
+      </div>
+      <footer class="modal-rodape" id="mdRodape">
+        <button type="button" class="btn" data-fechar-modal>Cancelar</button>
+        <button id="btnDespachar" type="button" class="btn btn-escuro">Despachar</button>
+      </footer>
+    </form>
+  </dialog>
+
   <!-- Cancelamento -->
   <dialog id="modalCancelar" class="modal modal-p" aria-labelledby="mcTitulo">
     <form method="dialog">
@@ -341,10 +437,10 @@
 
   <div id="impressao" aria-hidden="true"></div>
 
-  <script src="config.js?v=20261022b"></script>
-  <script src="js/util.js?v=20261022b"></script>
-  <script src="js/api.js?v=20261022b"></script>
-  <script src="js/demo.js?v=20261022b"></script>
-  <script src="js/painel.js?v=20261022b"></script>
+  <script src="config.js?v=20261022c"></script>
+  <script src="js/util.js?v=20261022c"></script>
+  <script src="js/api.js?v=20261022c"></script>
+  <script src="js/demo.js?v=20261022c"></script>
+  <script src="js/painel.js?v=20261022c"></script>
 </body>
 </html>

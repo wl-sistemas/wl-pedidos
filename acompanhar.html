@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400..800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/base.css?v=20261022b">
-  <link rel="stylesheet" href="css/cardapio.css?v=20261022b">
+  <link rel="stylesheet" href="css/base.css?v=20261022c">
+  <link rel="stylesheet" href="css/cardapio.css?v=20261022c">
 </head>
 <body>
   <div id="carregando" class="carregando"><div class="girando"></div><span>Buscando seu pedido…</span></div>
@@ -34,6 +34,14 @@
       <p class="comanda-numero acomp-numero" id="pedidoNumero"></p>
       <p class="acomp-status" id="pedidoStatus"></p>
       <p id="pedidoMotivo" class="aviso erro oculto"></p>
+      <div id="caixaEntrega" class="acomp-entrega oculto">
+        <p id="entregaTexto"></p>
+        <div id="caixaCodigo" class="acomp-codigo oculto">
+          <span>Código de entrega</span>
+          <strong id="entregaCodigo"></strong>
+          <small>Informe este código ao entregador quando ele chegar.</small>
+        </div>
+      </div>
       <ol id="etapas" class="etapas"></ol>
       <hr class="tracejado">
       <ul id="listaItens" class="lista-itens"></ul>
@@ -50,10 +58,10 @@
     <p class="rodape" id="atualizado"></p>
   </main>
 
-  <script src="config.js?v=20261022b"></script>
-  <script src="js/util.js?v=20261022b"></script>
-  <script src="js/api.js?v=20261022b"></script>
-  <script src="js/demo.js?v=20261022b"></script>
-  <script src="js/acompanhar.js?v=20261022b"></script>
+  <script src="config.js?v=20261022c"></script>
+  <script src="js/util.js?v=20261022c"></script>
+  <script src="js/api.js?v=20261022c"></script>
+  <script src="js/demo.js?v=20261022c"></script>
+  <script src="js/acompanhar.js?v=20261022c"></script>
 </body>
 </html>
